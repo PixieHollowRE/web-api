@@ -1,0 +1,767 @@
+<NameGenerator>
+	<!--Note: Characters withing comments are escaped and should be kept that way in the future.-->
+	<!--possessiveSuffix is used as a suffix to names... Buttercup's House for example-->
+	<possessiveSuffix>'s</possessiveSuffix>
+	<NameSelector type="First" defaultGender="1">
+        <name name_id="600" g="2">Aaron</name>
+        <name name_id="1">Abigail</name>
+        <name name_id="601" g="2">Ace</name>
+        <name name_id="2" g="3">Acorn</name>
+        <name name_id="602" g="2">Agate</name>
+        <name name_id="603" g="2">Ajay</name>
+        <name name_id="604" g="2">Alabaster</name>
+        <name name_id="605" g="2">Alder</name>
+        <name name_id="606" g="2">Alec</name>
+        <name name_id="607" g="2">Aleron</name>
+        <name name_id="608" g="2">Alex</name>
+        <name name_id="3">Alexa</name>
+        <name name_id="4">Alexia</name>
+        <name name_id="5">Ali</name>
+        <name name_id="6">Alina</name>
+        <name name_id="7">Amber</name>
+        <name name_id="8">Amethyst</name>
+        <name name_id="9">Amy</name>
+        <name name_id="510">Anastasia</name>
+        <name name_id="609" g="2">Anchor</name>
+        <name name_id="610" g="2">Andrew</name>
+        <name name_id="10">Apricot</name>
+        <name name_id="11">April</name>
+        <name name_id="611" g="2">Archer</name>
+        <name name_id="511">Aria</name>
+        <name name_id="12">Arianna</name>
+        <name name_id="14">Ashley</name>
+        <name name_id="15">Autumn</name>
+        <name name_id="612" g="2">Axel</name>
+        <name name_id="613" g="2">Badger</name>
+        <name name_id="614" g="2">Bailey</name>
+        <name name_id="615" g="2">Baker</name>
+        <name name_id="616" g="2">Bale</name>
+        <name name_id="617" g="2">Banjo</name>
+        <name name_id="16">Barbara</name>
+        <name name_id="618" g="2">Barclay</name>
+        <name name_id="619" g="2">Basil</name>
+        <name name_id="17">Bayberry</name>
+        <name name_id="18">Bellflower</name>
+        <name name_id="621" g="2">Benjy</name>
+        <name name_id="622" g="2">Bert</name>
+        <name name_id="512">Bethany</name>
+        <name name_id="19">Betsy</name>
+        <name name_id="20">Betty</name>
+        <name name_id="623" g="2">Bevel</name>
+        <name name_id="21">Bim</name>
+        <name name_id="624" g="2">Birch</name>
+        <name name_id="599" g="2">Bo</name>
+        <name name_id="22">Bonnie</name>
+        <name name_id="625" g="2">Boomer</name>
+        <name name_id="626" g="2">Boone</name>
+        <name name_id="23">Breezy</name>
+        <name name_id="627" g="2">Brock</name>
+        <name name_id="628" g="2">Bruce</name>
+        <name name_id="629" g="2">Brynn</name>
+        <name name_id="633" g="2">Buddy</name>
+        <name name_id="634" g="2">Burr</name>
+        <name name_id="635" g="2">Burton</name>
+        <name name_id="636" g="2">Buster</name>
+        <name name_id="24">Buttercup</name>
+        <name name_id="637" g="2">Calder</name>
+        <name name_id="25">Camellia</name>
+        <name name_id="513">Camille</name>
+        <name name_id="26">Carnation</name>
+		<name name_id="514">Carrie</name>
+        <name name_id="27">Carrot</name>
+        <name name_id="638" g="2">Caspar</name>
+        <name name_id="639" g="2">Cecil</name>
+        <name name_id="28">Cecile</name>
+        <name name_id="640" g="2">Cedar</name>
+        <name name_id="539">Celeste</name>
+        <name name_id="641" g="2">Chance</name>
+        <name name_id="29">Charity</name>
+        <name name_id="30">Charlotte</name>
+        <name name_id="642" g="2">Chase</name>
+        <name name_id="32">Chestnut</name>
+        <name name_id="33">Chickadee</name>
+        <name name_id="643" g="2">Chip</name>
+        <name name_id="34">Chipmunk</name>
+        <name name_id="35">Chloe</name>
+        <name name_id="36">Chocolate</name>
+        <name name_id="37">Cinnamon</name>
+        <name name_id="644" g="2">Clay</name>
+        <name name_id="645" g="2">Cliff</name>
+        <name name_id="38">Clover</name>
+        <name name_id="646" g="2">Coal</name>
+        <name name_id="39">Cobweb</name>
+        <name name_id="40">Coconut</name>
+        <name name_id="647" g="2">Cog</name>
+        <name name_id="773" g="2">Comet</name>
+        <name name_id="41">Coriander</name>
+        <name name_id="42">Cornflower</name>
+        <name name_id="648" g="2">Cosmo</name>
+        <name name_id="649" g="2">Cote</name>
+        <name name_id="650" g="2">Covey</name>
+        <name name_id="43">Crabapple</name>
+        <name name_id="651" g="2">Crag</name>
+        <name name_id="44">Cranberry</name>
+        <name name_id="652" g="2">Crane</name>
+        <name name_id="45">Cricket</name>
+        <name name_id="46">Crystal</name>
+        <name name_id="47">Cupcake</name>
+        <name name_id="653" g="2">Cyan</name>
+        <name name_id="48">Cypress</name>
+        <name name_id="49">Daffodil</name>
+        <name name_id="50">Dahlia</name>
+        <name name_id="51">Daisy</name>
+        <name name_id="654" g="2">Dale</name>
+        <name name_id="515">Dalila</name>
+        <name name_id="52">Dandelion</name>
+        <name name_id="655" g="2">Dane</name>
+        <name name_id="516">Daphne</name>
+        <name name_id="656" g="2">Darius</name>
+        <name name_id="657" g="2">Darrin</name>
+        <name name_id="53">Dawn</name>
+        <name name_id="658" g="2">Dawson</name>
+        <name name_id="54">Daybreak</name>
+        <name name_id="55">Daylily</name>
+        <name name_id="659" g="2">Decker</name>
+        <name name_id="660" g="2">Deon</name>
+        <name name_id="661" g="2">Devlin</name>
+        <name name_id="56">Dew</name>
+        <name name_id="57">Dewdrop</name>
+        <name name_id="662" g="2">Dewey</name>
+        <name name_id="664" g="2">Donner</name>
+        <name name_id="665" g="2">Drake</name>
+        <name name_id="667" g="2">Dug</name>
+        <name name_id="668" g="2">Dunn</name>
+        <name name_id="669" g="2">Dustin</name>
+        <name name_id="670" g="2">Dusty</name>
+        <name name_id="517">Ebony</name>
+        <name name_id="58" g="3">Echo</name>
+        <name name_id="671" g="2">Eddy</name>
+        <name name_id="672" g="2">Edward</name>
+        <name name_id="673" g="2">Elk</name>
+        <name name_id="59">Ella</name>
+        <name name_id="60">Elma</name>
+        <name name_id="61">Elva</name>
+        <name name_id="62">Emerald</name>
+        <name name_id="674" g="2">Emery</name>
+        <name name_id="63">Emily</name>
+        <name name_id="64">Emma</name>
+        <name name_id="675" g="2">Erik</name>
+        <name name_id="676" g="2">Ernie</name>
+        <name name_id="677" g="2">Errol</name>
+        <name name_id="65">Eve</name>
+        <name name_id="66">Faith</name>
+        <name name_id="67">Fantasia</name>
+        <name name_id="68">Fauna</name>
+        <name name_id="69">Faye</name>
+        <name name_id="678" g="2">Fennel</name>
+        <name name_id="70">Fern</name>
+        <name name_id="71">Fiery</name>
+        <name name_id="679" g="2">Fincher</name>
+        <name name_id="680" g="2">Finn</name>
+        <name name_id="681" g="2">Fir</name>
+        <name name_id="72">Flax</name>
+        <name name_id="682" g="2">Flint</name>
+        <name name_id="73">Flix</name>
+        <name name_id="74">Flora</name>
+        <name name_id="683" g="2">Ford</name>
+        <name name_id="75">Foxglove</name>
+        <name name_id="76">Frances</name>
+        <name name_id="685" g="2">Francis</name>
+        <name name_id="77">Gardenia</name>
+        <name name_id="686" g="2">Garnet</name>
+        <name name_id="78">Ginger</name>
+        <name name_id="79">Ginkgo</name>
+        <name name_id="687" g="2">Glen</name>
+        <name name_id="80">Gloria</name>
+        <name name_id="81">Gloriosa</name>
+        <name name_id="688" g="2">Gourd</name>
+        <name name_id="689" g="2">Gourdie</name>
+        <name name_id="82">Grace</name>
+        <name name_id="690" g="2">Grove</name>
+        <name name_id="691" g="2">Grub</name>
+        <name name_id="692" g="2">Gull</name>
+        <name name_id="595" g="2">Hale</name>
+        <name name_id="83">Happy</name>
+        <name name_id="693" g="2">Hare</name>
+        <name name_id="84">Harmony</name>
+        <name name_id="694" g="2">Harris</name>
+        <name name_id="695" g="2">Hawk</name>
+        <name name_id="85">Hazel</name>
+        <name name_id="86">Heather</name>
+        <name name_id="87">Heidi</name>
+        <name name_id="88">Helen</name>
+        <name name_id="697" g="2">Henry</name>
+        <name name_id="698" g="2">Heron</name>
+        <name name_id="89">Hickory</name>
+        <name name_id="699" g="2">Hob</name>
+        <name name_id="90">Holly</name>
+        <name name_id="91">Honey</name>
+        <name name_id="92">Hope</name>
+        <name name_id="93">Hurricane</name>
+        <name name_id="94">Hyacinth</name>
+        <name name_id="95">Indigo</name>
+        <name name_id="96">Infinity</name>
+        <name name_id="97">Iris</name>
+        <name name_id="98">Isabel</name>
+        <name name_id="518">Isabelle</name>
+        <name name_id="99">Ivy</name>
+        <name name_id="701" g="2">Jacob</name>
+        <name name_id="100">Jade</name>
+        <name name_id="702" g="2">James</name>
+        <name name_id="101">Jamie</name>
+        <name name_id="703" g="2">Jasper</name>
+        <name name_id="704" g="2">Jay</name>
+        <name name_id="519">Jayla</name>
+        <name name_id="102">Jeanie</name>
+        <name name_id="103">Jenny</name>
+        <name name_id="104">Jessamine</name>
+        <name name_id="540">Jillian</name>
+        <name name_id="105">Joy</name>
+        <name name_id="106">Julie</name>
+        <name name_id="107">June</name>
+        <name name_id="108">Juniper</name>
+        <name name_id="520">Karina</name>
+        <name name_id="109">Karma</name>
+        <name name_id="110">Kate</name>
+        <name name_id="111">Kelly</name>
+        <name name_id="521">Kenzie</name>
+        <name name_id="705" g="2">Kernel</name>
+        <name name_id="112">Kiki</name>
+        <name name_id="113">Kiwi</name>
+        <name name_id="114">Kobi</name>
+        <name name_id="115">Koko</name>
+        <name name_id="706" g="2">Koto</name>
+        <name name_id="522">Kylee</name>
+        <name name_id="116">Kyra</name>
+        <name name_id="117">Labyrinth</name>
+        <name name_id="119">Lala</name>
+        <name name_id="707" g="2">Lance</name>
+        <name name_id="120" g="3">Lark</name>
+        <name name_id="121">Laurel</name>
+        <name name_id="122">Lauren</name>
+        <name name_id="123">Lavender</name>
+        <name name_id="523">Layla</name>
+        <name name_id="708" g="2">Leaf</name>
+        <name name_id="124">Leeta</name>
+        <name name_id="125">Lemony</name>
+        <name name_id="126">Lenora</name>
+        <name name_id="127">Libby</name>
+        <name name_id="128">Lila</name>
+        <name name_id="129">Lilac</name>
+        <name name_id="130">Lily</name>
+        <name name_id="131">Liri</name>
+        <name name_id="132">Little</name>
+        <name name_id="133">Lizzy</name>
+        <name name_id="709" g="2">Lore</name>
+        <name name_id="134">Lorella</name>
+        <name name_id="135">Lori</name>
+        <name name_id="136">Lucia</name>
+        <name name_id="137">Lucky</name>
+        <name name_id="138">Lucy</name>
+        <name name_id="139">Lulu</name>
+        <name name_id="140">Luna</name>
+        <name name_id="710" g="2">Lute</name>
+        <name name_id="524">Lynn</name>
+        <name name_id="711" g="2">Lyric</name>
+        <name name_id="525">Maddie</name>
+        <name name_id="141">Magenta</name>
+        <name name_id="142">Magnolia</name>
+        <name name_id="143">Magpie</name>
+        <name name_id="144">Mahogany</name>
+        <name name_id="145">Margo</name>
+        <name name_id="146">Marigold</name>
+        <name name_id="712" g="2">Martin</name>
+        <name name_id="147">Mary</name>
+        <name name_id="148">May</name>
+        <name name_id="713" g="2">Maze</name>
+        <name name_id="149">Melanie</name>
+        <name name_id="150">Melody</name>
+        <name name_id="151">Mia</name>
+        <name name_id="714" g="2">Mica</name>
+        <name name_id="777" g="2">Michal</name>
+        <name name_id="152">Milkweed</name>
+        <name name_id="153">Minerva</name>
+        <name name_id="526">Miranda</name>
+        <name name_id="154">Misty</name>
+        <name name_id="155">Moptop</name>
+        <name name_id="156">Mudpie</name>
+        <name name_id="157">Mulberry</name>
+        <name name_id="158">Muriel</name>
+        <name name_id="715" g="2">Nadir</name>
+        <name name_id="159">Nectarine</name>
+        <name name_id="716" g="2">Nester</name>
+        <name name_id="160" g="3">Newt</name>
+        <name name_id="161">Nightfall</name>
+        <name name_id="162">Nightshade</name>
+        <name name_id="163">Nissa</name>
+        <name name_id="164">Nora</name>
+        <name name_id="165">Nutmeg</name>
+        <name name_id="166">Nyra</name>
+        <name name_id="717" g="2">Oak</name>
+        <name name_id="167">Octavia</name>
+        <name name_id="168">Olive</name>
+        <name name_id="169">Olivia</name>
+        <name name_id="718" g="2">Ollie</name>
+        <name name_id="170" g="3">Onyx</name>
+        <name name_id="171">Opal</name>
+        <name name_id="172">Orchid</name>
+        <name name_id="173">Oregano</name>
+        <name name_id="174">Oriole</name>
+        <name name_id="719" g="2">Otter</name>
+        <name name_id="175">Pandora</name>
+        <name name_id="176">Paprika</name>
+        <name name_id="177">Parsley</name>
+        <name name_id="178">Patchwork</name>
+        <name name_id="179">Peachy</name>
+        <name name_id="180">Peanut</name>
+        <name name_id="181">Pearl</name>
+        <name name_id="720" g="2">Peat</name>
+        <name name_id="182">Pecan</name>
+        <name name_id="183">Penelope</name>
+        <name name_id="184">Persimmon</name>
+        <name name_id="185">Petunia</name>
+        <name name_id="186">Phoebe</name>
+        <name name_id="722" g="2">Pier</name>
+        <name name_id="723" g="2">Pine</name>
+        <name name_id="187">Pineapple</name>
+        <name name_id="188">Pistachio</name>
+        <name name_id="189">Pluma</name>
+        <name name_id="190">Poplar</name>
+        <name name_id="191">Posy</name>
+        <name name_id="192">Primrose</name>
+        <name name_id="193">Prinna</name>
+        <name name_id="194">Prudence</name>
+        <name name_id="196">Pumpkin</name>
+        <name name_id="596" g="2">Quake</name>
+        <name name_id="725" g="2">Quarry</name>
+        <name name_id="197">Quicksilver</name>
+        <name name_id="541" g="3">Quinn</name>
+        <name name_id="198">Rachel</name>
+        <name name_id="726" g="2">Rain</name>
+        <name name_id="727" g="2">Ranger</name>
+        <name name_id="199">Raven</name>
+        <name name_id="728" g="2">Reed</name>
+        <name name_id="200">Rhodie</name>
+        <name name_id="201">Rhonda</name>
+        <name name_id="202">Rhubarb</name>
+        <name name_id="729" g="2">Richard</name>
+        <name name_id="203">Rill</name>
+        <name name_id="527" g="3">River</name>
+        <name name_id="204" g="3">Robin</name>
+        <name name_id="730" g="2">Rook</name>
+        <name name_id="205">Rosa</name>
+        <name name_id="206">Rose</name>
+        <name name_id="207">Rosemary</name>
+        <name name_id="208">Ruby</name>
+        <name name_id="731" g="2">Rusty</name>
+        <name name_id="732" g="2">Rye</name>
+        <name name_id="209">Saffron</name>
+        <name name_id="733" g="2">Sage</name>
+        <name name_id="210">Sahara</name>
+        <name name_id="211">Sally</name>
+        <name name_id="734" g="2">Sam</name>
+        <name name_id="212">Sapphire</name>
+        <name name_id="213">Sarah</name>
+        <name name_id="214">Sassafras</name>
+        <name name_id="528">Savannah</name>
+        <name name_id="215">Scarlet</name>
+        <name name_id="735" g="2">Scout</name>
+        <name name_id="736" g="2">Sean</name>
+        <name name_id="216">Seaweed</name>
+        <name name_id="529">Serena</name>
+        <name name_id="217">Serendipity</name>
+        <name name_id="737" g="2">Seth</name>
+        <name name_id="738" g="2">Shale</name>
+        <name name_id="218">Shanna</name>
+        <name name_id="219">Shelly</name>
+        <name name_id="739" g="2">Shoal</name>
+        <name name_id="220">Sienna</name>
+        <name name_id="221">Silver</name>
+        <name name_id="740" g="2">Skimmer</name>
+        <name name_id="222">Sky</name>
+        <name name_id="223" g="3">Skyler</name>
+        <name name_id="224">Sneezy</name>
+        <name name_id="225">Snowflake</name>
+        <name name_id="226">Sophie</name>
+        <name name_id="742" g="2">Spike</name>
+        <name name_id="227">Sprinkles</name>
+        <name name_id="743" g="2">Spruce</name>
+        <name name_id="228">Stargazer</name>
+        <name name_id="229">Stella</name>
+        <name name_id="744" g="2">Sterling</name>
+        <name name_id="745" g="2">Stone</name>
+        <name name_id="230">Stormy</name>
+        <name name_id="231">Strawberry</name>
+        <name name_id="232">Sundew</name>
+        <name name_id="233">Sunflower</name>
+        <name name_id="234">Sunrise</name>
+        <name name_id="235">Sunset</name>
+        <name name_id="236">Sunshine</name>
+        <name name_id="746" g="2">Tad</name>
+        <name name_id="530">Tamara</name>
+        <name name_id="237">Tangy</name>
+        <name name_id="238">Tansy</name>
+        <name name_id="747" g="2">Teak</name>
+        <name name_id="239">Tessa</name>
+        <name name_id="748" g="2">Thatcher</name>
+        <name name_id="749" g="2">Thistle</name>
+        <name name_id="240">Tiger</name>
+        <name name_id="750" g="2">Timber</name>
+        <name name_id="241" g="3">Tiny</name>
+        <name name_id="242" g="3">Toadstool</name>
+        <name name_id="752" g="2">Tobey</name>
+        <name name_id="753" g="2">Todd</name>
+        <name name_id="243">Topaz</name>
+        <name name_id="755" g="2">Topher</name>
+        <name name_id="531">Tori</name>
+        <name name_id="756" g="2">Torn</name>
+        <name name_id="757" g="2">Torrey</name>
+        <name name_id="244">Trinity</name>
+        <name name_id="245">Tulip</name>
+        <name name_id="246">Turnip</name>
+        <name name_id="247">Twilight</name>
+        <name name_id="248">Tyra</name>
+        <name name_id="759" g="2">Vail</name>
+        <name name_id="760" g="2">Valiant</name>
+        <name name_id="249">Valorie</name>
+        <name name_id="532">Vanessa</name>
+        <name name_id="761" g="2">Vern</name>
+        <name name_id="762" g="2">Vic</name>
+        <name name_id="250">Vicki</name>
+        <name name_id="533">Victoria</name>
+        <name name_id="251">Violet</name>
+        <name name_id="252">Wallflower</name>
+        <name name_id="253">Walnut</name>
+        <name name_id="763" g="2">Wedge</name>
+        <name name_id="764" g="2">Wes</name>
+        <name name_id="254">Windy</name>
+        <name name_id="255">Winnie</name>
+        <name name_id="256">Wispa</name>
+        <name name_id="766" g="2">Wren</name>
+        <name name_id="767" g="2">Wynn</name>
+        <name name_id="257">Xenops</name>
+        <name name_id="258">Yasmine</name>
+        <name name_id="768" g="2">Zak</name>
+        <name name_id="259">Zephyr</name>
+	</NameSelector>
+	<NameSelector type="Prefix" defaultGender="3">
+        <name name_id="260">Air</name>
+        <name name_id="261">Almond</name>
+        <name name_id="262">Apple</name>
+        <name name_id="263">Aspen</name>
+        <name name_id="800" g="2">Autumn</name>
+        <name name_id="801" g="2">Badger</name>
+        <name name_id="802" g="2">Bark</name>
+        <name name_id="803" g="2">Beacon</name>
+        <name name_id="804" g="2">Bear</name>
+        <name name_id="265" g="1">Beauty</name>
+        <name name_id="266">Bitter</name>
+        <name name_id="806" g="2">Brave</name>
+        <name name_id="267">Bright</name>
+        <name name_id="807" g="2">Brisk</name>
+        <name name_id="268">Broom</name>
+        <name name_id="269" g="1">Bubble</name>
+        <name name_id="270">Bumble</name>
+        <name name_id="271">Candle</name>
+        <name name_id="272" g="1">Carrot</name>
+        <name name_id="273">Cedar</name>
+        <name name_id="275">Chilly</name>
+        <name name_id="276">Citrus</name>
+        <name name_id="277">Cloud</name>
+        <name name_id="278">Cloudy</name>
+        <name name_id="808" g="2">Clover</name>
+        <name name_id="279">Cocoa</name>
+        <name name_id="280">Copper</name>
+        <name name_id="281" g="1">Cotton</name>
+        <name name_id="282" g="1">Cozy</name>
+        <name name_id="283">Cricket</name>
+        <name name_id="809" g="2">Crow</name>
+        <name name_id="810" g="2">Cub</name>
+        <name name_id="284" g="1">Cute</name>
+        <name name_id="285" g="1">Daisy</name>
+        <name name_id="286">Dapple</name>
+        <name name_id="811" g="2">Dash</name>
+        <name name_id="287">Day</name>
+        <name name_id="288" g="1">Dazzle</name>
+        <name name_id="289" g="1">Diamond</name>
+        <name name_id="290">Drift</name>
+        <name name_id="812" g="2">Eagle</name>
+        <name name_id="291">Elm</name>
+        <name name_id="292">Evening</name>
+        <name name_id="813" g="2">Falcon</name>
+        <name name_id="293" g="1">Fancy</name>
+        <name name_id="294">Fern</name>
+        <name name_id="295">Fig</name>
+        <name name_id="296">Fire</name>
+        <name name_id="815" g="2">Fleet</name>
+        <name name_id="297">Flicker</name>
+        <name name_id="298" g="1">Flutter</name>
+        <name name_id="299">Foggy</name>
+        <name name_id="300">Fox</name>
+        <name name_id="301">Frost</name>
+        <name name_id="302">Frosty</name>
+        <name name_id="303">Frozen</name>
+        <name name_id="304">Funny</name>
+        <name name_id="305">Garlic</name>
+        <name name_id="306" g="1">Giggle</name>
+        <name name_id="534" g="1">Glitter</name>
+        <name name_id="308" g="1">Grassy</name>
+        <name name_id="309">Green</name>
+        <name name_id="818" g="2">Hail</name>
+        <name name_id="819" g="2">Hasty</name>
+        <name name_id="820" g="2">Hawk</name>
+        <name name_id="821" g="2">Hickory</name>
+        <name name_id="310">Holly</name>
+        <name name_id="822" g="2">Hurry</name>
+        <name name_id="311">Ice</name>
+        <name name_id="312" g="1">Island</name>
+        <name name_id="823" g="2">Ivy</name>
+        <name name_id="313">Jelly</name>
+        <name name_id="314">Jumpy</name>
+        <name name_id="315">Lemon</name>
+        <name name_id="316">Light</name>
+        <name name_id="317">Lightning</name>
+        <name name_id="318">Lime</name>
+        <name name_id="319">Little</name>
+        <name name_id="824" g="2">Lock</name>
+        <name name_id="320">Lotus</name>
+        <name name_id="321" g="1">Lovely</name>
+        <name name_id="322">Magic</name>
+        <name name_id="323">Mango</name>
+        <name name_id="324">Maple</name>
+        <name name_id="325">Merry</name>
+        <name name_id="326">Misty</name>
+        <name name_id="327">Moon</name>
+        <name name_id="328">Morning</name>
+        <name name_id="329">Moss</name>
+        <name name_id="330">Mossy</name>
+        <name name_id="331">Mountain</name>
+        <name name_id="332">Muddy</name>
+        <name name_id="333">Never</name>
+        <name name_id="825" g="2">Nickel</name>
+        <name name_id="334">Night</name>
+        <name name_id="826" g="2">Nimble</name>
+        <name name_id="335">Oak</name>
+        <name name_id="336" g="1">Olive</name>
+        <name name_id="337">Orange</name>
+        <name name_id="827" g="2">Otter</name>
+        <name name_id="338">Parsley</name>
+        <name name_id="339" g="1">Peach</name>
+        <name name_id="340">Pear</name>
+        <name name_id="828" g="2">Pebble</name>
+        <name name_id="341">Pepper</name>
+        <name name_id="342">Pine</name>
+        <name name_id="343">Plum</name>
+        <name name_id="344">Pollen</name>
+        <name name_id="345" g="1">Pretty</name>
+        <name name_id="346">Pumpkin</name>
+        <name name_id="347">Purple</name>
+        <name name_id="348">Quick</name>
+        <name name_id="349">Rain</name>
+        <name name_id="350" g="1">Rainbow</name>
+        <name name_id="351">Rainy</name>
+        <name name_id="829" g="2">Rock</name>
+        <name name_id="352" g="1">Rose</name>
+        <name name_id="353">Rumble</name>
+        <name name_id="830" g="2">Sage</name>
+        <name name_id="354">Sandy</name>
+        <name name_id="355">Sea</name>
+        <name name_id="356" g="1">Shiny</name>
+        <name name_id="831" g="2">Shy</name>
+        <name name_id="357">Silk</name>
+        <name name_id="833" g="2">Slight</name>
+        <name name_id="358">Snow</name>
+        <name name_id="359">Sour</name>
+        <name name_id="360">Speedy</name>
+        <name name_id="361">Spider</name>
+        <name name_id="834" g="2">Spring</name>
+        <name name_id="835" g="2">Squall</name>
+        <name name_id="362">Star</name>
+        <name name_id="836" g="2">Storm</name>
+        <name name_id="837" g="2">Stout</name>
+        <name name_id="838" g="2">Strong</name>
+        <name name_id="363">Sugar</name>
+        <name name_id="839" g="2">Summer</name>
+        <name name_id="364">Sun</name>
+        <name name_id="365" g="1">Sweet</name>
+        <name name_id="840" g="2">Swift</name>
+        <name name_id="366">Tangle</name>
+        <name name_id="367">Thunder</name>
+        <name name_id="842" g="2">Tiny</name>
+        <name name_id="843" g="2">Toad</name>
+        <name name_id="368" g="1">Tulip</name>
+        <name name_id="369">Tumble</name>
+        <name name_id="535" g="1">Twinkle</name>
+        <name name_id="370">Twisty</name>
+        <name name_id="371" g="1">Vanilla</name>
+        <name name_id="372">Water</name>
+        <name name_id="373">Whiffle</name>
+        <name name_id="374">Wild</name>
+        <name name_id="844" g="2">Wind</name>
+        <name name_id="375" g="1">Windy</name>
+        <name name_id="536">Winter</name>
+        <name name_id="376" g="1">Wonder</name>
+        <name name_id="377">Wrinkle</name>
+        <name name_id="378" g="1">Yarrow</name>
+	</NameSelector>
+	<NameSelector type="Suffix" defaultGender="3">
+        <name name_id="379" g="1">bead</name>
+        <name name_id="380">beam</name>
+        <name name_id="381">bee</name>
+        <name name_id="382">bell</name>
+        <name name_id="542" g="1">belle</name>
+        <name name_id="383">berry</name>
+        <name name_id="384" g="1">bloom</name>
+        <name name_id="385" g="1">blossom</name>
+        <name name_id="386" g="1">boots</name>
+        <name name_id="387">breath</name>
+        <name name_id="388">breeze</name>
+        <name name_id="389">bug</name>
+        <name name_id="390" g="1">butter</name>
+        <name name_id="391">button</name>
+        <name name_id="901" g="2">buzz</name>
+        <name name_id="902" g="2">chill</name>
+        <name name_id="903" g="2">chime</name>
+        <name name_id="392">cliff</name>
+        <name name_id="393">cloud</name>
+        <name name_id="394">clove</name>
+        <name name_id="904" g="2">crash</name>
+        <name name_id="395" g="1">cup</name>
+        <name name_id="396">curl</name>
+        <name name_id="905" g="2">dale</name>
+        <name name_id="397">dance</name>
+        <name name_id="398">dash</name>
+        <name name_id="399">dew</name>
+        <name name_id="906" g="2">din</name>
+        <name name_id="400">drop</name>
+        <name name_id="401">dust</name>
+        <name name_id="402">ear</name>
+        <name name_id="907" g="2">elbow</name>
+        <name name_id="403">eye</name>
+        <name name_id="404">feather</name>
+        <name name_id="405">field</name>
+        <name name_id="406">fig</name>
+        <name name_id="407">flame</name>
+        <name name_id="908" g="2">flap</name>
+        <name name_id="408">flash</name>
+        <name name_id="409">fleck</name>
+        <name name_id="410">flight</name>
+        <name name_id="411">flip</name>
+        <name name_id="909" g="2">flipper</name>
+        <name name_id="412" g="1">flower</name>
+        <name name_id="413" g="1">fluff</name>
+        <name name_id="414">fly</name>
+        <name name_id="415" g="1">foam</name>
+        <name name_id="416">fog</name>
+        <name name_id="417">foot</name>
+        <name name_id="418">forest</name>
+        <name name_id="419">freeze</name>
+        <name name_id="420" g="1">froth</name>
+        <name name_id="421">fruit</name>
+        <name name_id="422">garden</name>
+        <name name_id="423">gem</name>
+        <name name_id="424">glade</name>
+        <name name_id="425">glimmer</name>
+        <name name_id="426">glow</name>
+        <name name_id="427">gourd</name>
+        <name name_id="428">grace</name>
+        <name name_id="429" g="1">grass</name>
+        <name name_id="430">griddle</name>
+        <name name_id="431">gust</name>
+        <name name_id="432">heart</name>
+        <name name_id="912" g="2">hill</name>
+        <name name_id="433">hop</name>
+        <name name_id="434">horn</name>
+        <name name_id="913" g="2">hush</name>
+        <name name_id="435">jewel</name>
+        <name name_id="914" g="2">knee</name>
+        <name name_id="436" g="1">lace</name>
+        <name name_id="437">lake</name>
+        <name name_id="438" g="1">lashes</name>
+        <name name_id="439" g="1">leaf</name>
+        <name name_id="915" g="2">light</name>
+        <name name_id="440" g="1">lily</name>
+        <name name_id="916" g="2">lock</name>
+        <name name_id="441" g="1">locks</name>
+        <name name_id="442">loop</name>
+        <name name_id="917" g="2">lull</name>
+        <name name_id="443">meadow</name>
+        <name name_id="444">mello</name>
+        <name name_id="445">mint</name>
+        <name name_id="446">mist</name>
+        <name name_id="447">moon</name>
+        <name name_id="448">muddle</name>
+        <name name_id="449">muse</name>
+        <name name_id="450">newt</name>
+        <name name_id="918" g="2">noise</name>
+        <name name_id="451" g="1">noodles</name>
+        <name name_id="919" g="2">nose</name>
+        <name name_id="452">peal</name>
+        <name name_id="920" g="2">pebble</name>
+        <name name_id="453" g="1">pebbles</name>
+        <name name_id="454">petal</name>
+        <name name_id="921" g="2">pin</name>
+        <name name_id="455">plume</name>
+        <name name_id="456">pond</name>
+        <name name_id="457">pool</name>
+        <name name_id="458" g="1">puff</name>
+        <name name_id="459">ray</name>
+        <name name_id="460">ripple</name>
+        <name name_id="461">river</name>
+        <name name_id="922" g="2">roar</name>
+        <name name_id="462">root</name>
+        <name name_id="923" g="2">row</name>
+        <name name_id="924" g="2">ruckus</name>
+        <name name_id="925" g="2">rumble</name>
+        <name name_id="537" g="1">sage</name>
+        <name name_id="463">sand</name>
+        <name name_id="464">shadow</name>
+        <name name_id="465" g="1">shimmer</name>
+        <name name_id="466" g="1">shine</name>
+        <name name_id="467">sky</name>
+        <name name_id="926" g="2">smash</name>
+        <name name_id="468" g="1">socks</name>
+        <name name_id="469">song</name>
+        <name name_id="538">spark</name>
+        <name name_id="470">sparkle</name>
+        <name name_id="927" g="2">sparrow</name>
+        <name name_id="471">speck</name>
+        <name name_id="472">spirit</name>
+        <name name_id="473">splash</name>
+        <name name_id="474">spring</name>
+        <name name_id="475">sprite</name>
+        <name name_id="476">sprout</name>
+        <name name_id="477">stem</name>
+        <name name_id="478">stone</name>
+        <name name_id="479">storm</name>
+        <name name_id="480">stream</name>
+        <name name_id="481">stripe</name>
+        <name name_id="482">swamp</name>
+        <name name_id="483">swirls</name>
+        <name name_id="484">thistle</name>
+        <name name_id="485">thorn</name>
+        <name name_id="486">toad</name>
+        <name name_id="487" g="1">toes</name>
+        <name name_id="488">tree</name>
+        <name name_id="489">twill</name>
+        <name name_id="490" g="1">twinkle</name>
+        <name name_id="491" g="1">twirl</name>
+        <name name_id="492" g="1">twirls</name>
+        <name name_id="493">twist</name>
+        <name name_id="494">vale</name>
+        <name name_id="495">valley</name>
+        <name name_id="496">vine</name>
+        <name name_id="497" g="1">wax</name>
+        <name name_id="498">weather</name>
+        <name name_id="499">web</name>
+        <name name_id="500">whirl</name>
+        <name name_id="501">whisk</name>
+        <name name_id="502">whisper</name>
+        <name name_id="503">willow</name>
+        <name name_id="504">wind</name>
+        <name name_id="505">wing</name>
+        <name name_id="506">wings</name>
+        <name name_id="507">wink</name>
+        <name name_id="508">wish</name>
+	</NameSelector>
+</NameGenerator>

@@ -9,11 +9,58 @@ const express = require('express')
 
 const CryptoJS = require('crypto-js')
 
+const fs = require('fs')
+const { XMLParser } = require('fast-xml-parser')
+
 const loginQueue = []
 
 app.get('/', (req, res) => {
   res.send('Pixie Hollow API service.')
 })
+
+function parseFairyNames () {
+  const xml = fs.readFileSync('assets/nameGenerator.xml', 'utf-8')
+  const parser = new XMLParser({ ignoreAttributes: false })
+
+  const names = parser.parse(xml).NameGenerator.NameSelector
+
+  const namesList = {}
+
+  for (const ns of names) {
+    const type = ns['@_type']
+    namesList[type] = []
+
+    for (const name of ns.name) {
+      namesList[type].push(name['#text'])
+    }
+  }
+
+  return namesList
+}
+
+const fairyNames = parseFairyNames()
+
+function validateFairyName (name) {
+  const nameParts = name.split(' ')
+  const [firstName, lastName] = nameParts
+
+  if (nameParts.length > 2) return false
+
+  if (fairyNames['First'].includes(firstName)) {
+    if (!lastName) return true
+
+    for (const prefix of fairyNames['Prefix']) {
+      if (lastName.startsWith(prefix)) {
+        const suffix = lastName.slice(prefix.length)
+        if (fairyNames['Suffix'].includes(suffix)) {
+          return true
+        }
+      }
+    }
+  }
+
+  return false
+}
 
 function verifyAuthorization (token) {
   return token === process.env.API_TOKEN
@@ -630,9 +677,18 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
 
 app.post('/fairies/api/FairiesNewFairyRequest', async (req, res) => {
   const ses = req.session
-  const success = ses ? 'true' : 'false'
+  let success = true
 
   const fairyData = req.body.fairiesnewfairyrequest?.fairy[0]
+
+  if (!ses.logged || !validateFairyName(fairyData.name[0])) {
+    success = false
+    return res.send(createXML({
+      response: {
+        success
+      }
+    }))
+  }
 
   const fairyId = ses ? await db.createFairy(ses.userId, fairyData) : -1
   ses.fairyId = fairyId
