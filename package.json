@@ -11,9 +11,9 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@eslint/eslintrc": "^3.3.3",
+    "@eslint/eslintrc": "^3.3.4",
     "@eslint/js": "^10.0.1",
-    "axios": "^1.13.5",
+    "axios": "^1.13.6",
     "bcrypt": "^6.0.0",
     "connect-mongo": "^6.0.0",
     "cors": "^2.8.6",
@@ -23,13 +23,13 @@
     "express-session": "^1.19.0",
     "express-xml-bodyparser": "^0.4.1",
     "fast-xml-parser": "^5.4.1",
-    "globals": "^17.3.0",
-    "mongoose": "^9.2.1",
+    "globals": "^17.4.0",
+    "mongoose": "^9.2.3",
     "pm2": "^6.0.14",
     "xmlbuilder2": "^4.0.3"
   },
   "devDependencies": {
-    "eslint": "^10.0.1"
+    "eslint": "^10.0.2"
   },
   "packageManager": "yarn@4.12.0+sha512.f45ab632439a67f8bc759bf32ead036a1f413287b9042726b7cc4818b7b49e14e9423ba49b18f9e06ea4941c1ad062385b1d8760a8d5091a1a31e5f6219afca8"
 }
