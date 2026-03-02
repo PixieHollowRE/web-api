@@ -151,8 +151,7 @@ async function handleWhoAmIRequest (req, res) {
       userTestAccessAllowed: false,
       'server-time': {
         day: new Date().toLocaleDateString('en-ZA'),
-        time: '0:0',
-        'day-of-week': new Date().toLocaleDateString('en-US', { weekday: 'short' })
+        time: new Date().toLocaleTimeString('en-ZA')
       },
       fairy_id: ses.fairyId
     }
@@ -736,6 +735,53 @@ app.post('/fairies/api/FairiesInventoryRequest', (req, res) => {
         type: 'wardrobe',
         inv_item: item_list
       }
+    }
+  }))
+})
+
+app.post('/fairies/api/CouponRedemptionRequest', async (req, res) => {
+  const code = req.body.couponredemptionrequest?.code[0]
+  const ses = req.session
+  let success = false
+
+  if (!ses.logged) {
+    return res.send(createXML({
+      response: {
+        success,
+        error: { '@code': 'USER_NOT_LOGGED_IN' }
+      }
+    }))
+  }
+
+  const codeData = await db.getRedeemableCode(code)
+  if (!codeData) {
+    return res.send(createXML({
+      response: {
+        success,
+        error: { '@code': 'ERROR_INVALID_PARMS' }
+      }
+    }))
+  }
+
+  const isRedeemed = await db.checkCodeRedeemedByUser(ses.username, code)
+  if (isRedeemed) {
+    return res.send(createXML({
+      response: {
+        success,
+        error: { '@code': 'AT_MAX_USES' }
+      }
+    }))
+  }
+
+  success = true
+  // TODO: Save rewards
+  await db.setCodeAsRedeemedByUser(ses.username, code)
+
+  res.send(createXML({
+    response: {
+      success,
+      item_id: codeData.rewardId,
+      count: codeData.quantity
     }
   }))
 })

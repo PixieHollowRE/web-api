@@ -7,6 +7,7 @@ const createXML = require('../utils/xml')
 
 const Account = require('./models/Account')
 const Fairy = require('./models/Fairy')
+const RedeemableCode = require('./models/RedeemableCode')
 
 const bcrypt = require('bcrypt')
 
@@ -378,6 +379,34 @@ class Database {
     })
 
     return await account.save()
+  }
+
+  async getRedeemableCode (code) {
+    return await RedeemableCode.findOne({ $and: [{ codeName: code }, { expirationDate: { $gt: new Date() } }] })
+  }
+
+  async checkCodeRedeemedByUser (username, code) {
+    const account = await this.retrieveAccountFromUser(username)
+
+    if (account) {
+      if (account.codesRedeemed === undefined) {
+        account.codesRedeemed = {}
+        await account.save()
+      }
+
+      return account.codesRedeemed.includes(code)
+    }
+
+    return false
+  }
+
+  async setCodeAsRedeemedByUser (username, code) {
+    const account = await this.retrieveAccountFromUser(username)
+
+    if (account) {
+      account.codesRedeemed.push(code)
+      await account.save()
+    }
   }
 }
 
