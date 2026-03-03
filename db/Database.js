@@ -35,7 +35,7 @@ class Database {
       console.log('Creating doid sequence...')
       this.db.collection('globals').insertOne({
         _id: 'doid',
-        seq: 100000000
+        seq: 1000000000
       })
     }
 
