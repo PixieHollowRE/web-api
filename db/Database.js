@@ -330,6 +330,14 @@ class Database {
       color_value: parseInt(i.color[0]._)
     }))
 
+    const bio = () => {
+      const questions = []
+      for (let i = 1; i <= 6; i++) {
+        questions.push({id: i, answer: 0})
+      }
+      return questions
+    }
+
     const account = await this.retrieveAccountFromIdentifier(accountId)
 
     // Store our fairy.
@@ -340,6 +348,7 @@ class Database {
       name: fairyData.name[0],
       talent: parseInt(fairyData.talent[0]),
       gender: parseInt(fairyData.gender[0]),
+      bio: bio(),
       avatar: {
         proportions,
         rotations,

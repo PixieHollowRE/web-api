@@ -607,7 +607,15 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     }
 
     if (includeBio) {
-      fairyEl['#'].bio = fairy.bio || ''
+      const bio_questions = []
+
+      for (const bio_question of fairy.bio) {
+        bio_questions.push(bio_question)
+      }
+
+      fairyEl['#'].bio = [{
+        question: bio_questions
+      }]
     }
 
     if (includeAvatar && fairy.avatar) {
@@ -784,4 +792,59 @@ app.post('/fairies/api/CouponRedemptionRequest', async (req, res) => {
       count: codeData.quantity
     }
   }))
+})
+
+app.post('/fairies/api/FairiesEditBioRequest', async (req, res) => {
+    const questions = req.body.fairieseditbiorequest?.bio?.[0]?.question
+    const ses = req.session
+    const success = true
+
+    if (!ses.logged || !questions || questions.length != 6) {
+      return res.send(createXML({
+        response: {
+          success: !success
+        }
+      }))
+    }
+
+    const fairy = await db.retrieveFairy(ses.fairyId)
+    for (const [i, question] of questions.entries()) {
+      fairy.bio[i] = {
+        id: i+1,
+        answer: parseInt(question.answer[0]),
+      }
+    }
+    
+    await fairy.save()
+
+    res.send(createXML({
+      response: {
+        success
+      }
+    }))
+})
+
+app.post('/fairies/api/FairiesEditIconRequest', async (req, res) => {
+    const iconId = req.body.icon_id
+    const ses = req.session
+    const success = true
+
+    if (!ses.logged || !iconId) {
+      return res.send(createXML({
+        response: {
+          success: !success
+        }
+      }))
+    }
+
+    const fairy = await db.retrieveFairy(ses.fairyId)
+    fairy.icon = iconId
+
+    await fairy.save()
+
+    res.send(createXML({
+      response: {
+        success
+      }
+    }))
 })
