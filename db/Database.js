@@ -145,6 +145,7 @@ class Database {
     res.send(createXML({
       AccountLoginResponse: {
         success: validCredentials,
+        status: 'logged_in',
         error: {
           '@code': errorCode
         },
