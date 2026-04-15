@@ -20,6 +20,7 @@ const Fairy = new mongoose.model('Fairy', {
   tutorialBitmask: { type: Array, default: [0, 0] },
   optionsBitmask: { type: Number, default: 0 },
   gold: { type: Number, default: 0 },
+  pouch: { type: Array },
   avatar: {
     proportions: {
       head: Number,
