@@ -31,14 +31,14 @@ global.app.use(xmlparser())
 // Setup sessions and include our web routes.
 sess = {
   secret: process.env.SESSION_SECRET || 'PixieHollow_secret',
-  store: MongoStore.create({ mongoUrl: 'mongodb://127.0.0.1:27017/PixieHollow' }),
+  store: MongoStore.create({ mongoUrl: 'mongodb://127.0.0.1:27017/PixieHollow', ttl: 60 * 60 * 24 }),
   resave: false,
   saveUninitialized: true,
 
   cookie: {
     secure: false, // if true only transmit cookie over https
     httpOnly: false, // if true prevent client side JS from reading the cookie
-    maxAge: 1000 * 60 * 10 // session max age in milliseconds
+    maxAge: 1000 * 60 * 60 * 24 // session max age in milliseconds
   },
   rolling: true // reset the cookie Max-Age on every request
 }
