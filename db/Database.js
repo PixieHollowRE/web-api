@@ -18,11 +18,11 @@ const saltRounds = 12
 const userAgent = 'Sunrise Games - Pixie Hollow API'
 
 class Database {
-  constructor () {
+  constructor() {
     this.connect()
   }
 
-  async connect () {
+  async connect() {
     await mongoose.connect('mongodb://127.0.0.1:27017/PixieHollow')
 
     console.log('Connected to MongoDB!')
@@ -42,7 +42,7 @@ class Database {
     this.db.on('error', console.error.bind(console, 'MongoDB connection error:'))
   }
 
-  async getNextDoId () {
+  async getNextDoId() {
     const ret = await this.db.collection('globals').findOneAndUpdate(
       { _id: 'doid' }, // filter
       { $inc: { seq: 1 } }, // update
@@ -52,7 +52,7 @@ class Database {
     return ret.seq
   }
 
-  async handleFlashLogin (req, res) {
+  async handleFlashLogin(req, res) {
     let username = req.body.username
     let password = req.body.password
     let loginType = req.body.loginType
@@ -100,7 +100,7 @@ class Database {
     }
 
     responseData.input = {
-      'cookieValue' : '',
+      'cookieValue': '',
       'loginType': 'hard'
     }
     responseData.token = ''
@@ -117,7 +117,7 @@ class Database {
     }))
   }
 
-  async handleAccountLogin (req, res) {
+  async handleAccountLogin(req, res) {
     let username = req.body.username
     let password = req.body.password
 
@@ -158,7 +158,7 @@ class Database {
     }))
   }
 
-  async createSession (req, username, accountId, justRegistered) {
+  async createSession(req, username, accountId, justRegistered) {
     const ses = req.session
 
     ses.username = username
@@ -173,7 +173,7 @@ class Database {
     }
   }
 
-  async isUsernameAvailable (username) {
+  async isUsernameAvailable(username) {
     const account = await Account.exists({ username })
 
     if (account) {
@@ -183,7 +183,7 @@ class Database {
     return true
   }
 
-  async doesFairyExist (identifier) {
+  async doesFairyExist(identifier) {
     const fairy = await Fairy.findOne({ $or: [{ _id: identifier }, { accountId: identifier }] })
 
     if (fairy) {
@@ -193,7 +193,7 @@ class Database {
     return false
   }
 
-  async retrieveFairy (identifier) {
+  async retrieveFairy(identifier) {
     const fairy = await Fairy.findOne({ $or: [{ _id: identifier }, { accountId: identifier }] })
 
     if (fairy) {
@@ -203,7 +203,7 @@ class Database {
     return false
   }
 
-  async retrieveFairyByOwnerAccount (owner) {
+  async retrieveFairyByOwnerAccount(owner) {
     const fairy = await Fairy.findOne({ ownerAccount: owner })
 
     if (fairy) {
@@ -213,7 +213,7 @@ class Database {
     return false
   }
 
-  async getAccountIdFromUser (username) {
+  async getAccountIdFromUser(username) {
     const account = await this.retrieveAccountFromUser(username)
 
     if (account) {
@@ -223,7 +223,7 @@ class Database {
     return -1
   }
 
-  async getUserNameFromAccountId (accountId) {
+  async getUserNameFromAccountId(accountId) {
     const account = await this.retrieveAccountFromIdentifier(accountId)
 
     if (account) {
@@ -233,7 +233,7 @@ class Database {
     return ''
   }
 
-  async retrieveAccountData (username) {
+  async retrieveAccountData(username) {
     const data = new URLSearchParams()
 
     data.append('username', username)
@@ -248,7 +248,7 @@ class Database {
     return request.data
   }
 
-  async checkLogin (username, password) {
+  async checkLogin(username, password) {
     const data = new URLSearchParams()
 
     data.append('username', username)
@@ -263,19 +263,19 @@ class Database {
     })
   }
 
-  async retrieveAccountFromIdentifier (identifier) {
+  async retrieveAccountFromIdentifier(identifier) {
     return await Account.findById(identifier)
   }
 
-  async retrieveAccountFromUser (username) {
+  async retrieveAccountFromUser(username) {
     return await Account.findOne({ username })
   }
 
-  async retrieveAccountFromFairyId (fairyId) {
+  async retrieveAccountFromFairyId(fairyId) {
     return await Account.findOne({ $or: [{ playerId: fairyId }] })
   }
 
-  async verifyCredentials (username, password) {
+  async verifyCredentials(username, password) {
     let account = await this.retrieveAccountFromUser(username)
 
     if (!account) {
@@ -311,7 +311,7 @@ class Database {
     return match
   }
 
-  async createFairy (accountId, fairyData) {
+  async createFairy(accountId, fairyData) {
     const avatar = fairyData.avatar[0]
 
     const proportions = {}
@@ -324,17 +324,37 @@ class Database {
       rotations[r.$.type.toLowerCase()] = parseInt(r._)
     })
 
-    const items = avatar.item.map(i => ({
-      type: i.$.type,
-      item_id: parseInt(i.item_id[0]),
-      color_number: parseInt(i.color[0].$.number),
-      color_value: parseInt(i.color[0]._)
-    }))
+    const items = []
+
+    for (const i of avatar.item) {
+      let color1 = 0
+      let color2 = 0
+
+      for (const c of i.color || []) {
+        const num = parseInt(c.$.number)
+        const val = parseInt(c._)
+
+        if (num === 1) {
+          color1 = val
+        } else if (num === 2) {
+          color2 = val
+        }
+      }
+
+      items.push({
+        inv_id: await this.getNextDoId(),
+        type: i.$.type,
+        item_id: parseInt(i.item_id[0]),
+        color1,
+        color2,
+        location: "Equipped"
+      })
+    }
 
     const bio = () => {
       const questions = []
       for (let i = 1; i <= 6; i++) {
-        questions.push({id: i, answer: 0})
+        questions.push({ id: i, answer: 0 })
       }
       return questions
     }
@@ -375,7 +395,7 @@ class Database {
     return saved._id
   }
 
-  async createAccount (username, password) {
+  async createAccount(username, password) {
     if (!await this.isUsernameAvailable(username)) {
       // Sanity check
       return false
@@ -391,11 +411,11 @@ class Database {
     return await account.save()
   }
 
-  async getRedeemableCode (code) {
+  async getRedeemableCode(code) {
     return await RedeemableCode.findOne({ $and: [{ codeName: code }, { expirationDate: { $gt: new Date() } }] })
   }
 
-  async checkCodeRedeemedByUser (username, code) {
+  async checkCodeRedeemedByUser(username, code) {
     const account = await this.retrieveAccountFromUser(username)
 
     if (account) {
@@ -410,7 +430,7 @@ class Database {
     return false
   }
 
-  async setCodeAsRedeemedByUser (username, code) {
+  async setCodeAsRedeemedByUser(username, code) {
     const account = await this.retrieveAccountFromUser(username)
 
     if (account) {

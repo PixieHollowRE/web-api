@@ -657,15 +657,29 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
 
       if (fairy.avatar.items) {
         avatarEl.inv_item = []
+
         for (const item of fairy.avatar.items) {
+          const colors = []
+
+          if (typeof item.color1 === 'number' && item.color1 !== 0) {
+            colors.push({
+              '@number': 1,
+              '#': item.color1
+            })
+          }
+
+          if (typeof item.color2 === 'number' && item.color2 !== 0) {
+            colors.push({
+              '@number': 2,
+              '#': item.color2
+            })
+          }
+
           avatarEl.inv_item.push({
             '@type': item.type,
             '#': {
               item_id: item.item_id,
-              color: {
-                '@number': item.color_number,
-                '#': item.color_value
-              },
+              color: colors
             }
           })
         }

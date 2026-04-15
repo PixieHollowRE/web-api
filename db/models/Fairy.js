@@ -18,7 +18,8 @@ const Fairy = new mongoose.model('Fairy', {
   address: { type: String, default: '1234CatepillerCorral' },
   moreOptions: { type: String, default: '000000000000000000000000' },
   tutorialBitmask: { type: Array, default: [0, 0] },
-  optionsBitmask: {type: Number, default: 0},
+  optionsBitmask: { type: Number, default: 0 },
+  gold: { type: Number, default: 0 },
   avatar: {
     proportions: {
       head: Number,
@@ -46,10 +47,23 @@ const Fairy = new mongoose.model('Fairy', {
     skin_color: Number,
     wing_color: Number,
     items: [{
+      inv_id: Number,
       type: { type: String },
       item_id: Number,
-      color_number: Number,
-      color_value: Number
+      slot: { type: Number, default: 0 },
+      createdById: { type: Number, default: 0 },
+      createdByName: { type: String, default: '' },
+      giftedById: { type: Number, default: 0 },
+      giftedByName: { type: String, default: '' },
+      quality: { type: Number, default: 0 },
+      color1: { type: Number, default: 0 },
+      color2: { type: Number, default: 0 },
+      howAcquired: { type: Number, default: 0 },
+      location: {
+        type: String,
+        enum: ['Equipped', 'Wardrobe', 'Storage'],
+        default: 'Wardrobe'
+      }
     }]
   }
 })
