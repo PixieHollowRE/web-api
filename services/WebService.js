@@ -598,7 +598,8 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         chosen: fairy.chosen,
         icon: fairy.icon,
         game_prof_bg: fairy.game_prof_bg,
-        options_mask: fairy.optionsBitmask
+        options_mask: fairy.optionsBitmask,
+        level: fairy.level
       }
     }
 
