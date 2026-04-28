@@ -41,14 +41,12 @@ function parseFairyNames () {
 const fairyNames = parseFairyNames()
 
 function validateFairyName (name) {
-  const nameParts = name.split(' ')
-  const [firstName, lastName] = nameParts
-
+  const nameParts = name.trim().split(/\s+/)
   if (nameParts.length > 2) return false
 
-  if (fairyNames['First'].includes(firstName)) {
-    if (!lastName) return true
-
+  const [firstName, lastName] = nameParts
+  
+  function validateLastName(lastName) {
     for (const prefix of fairyNames['Prefix']) {
       if (lastName.startsWith(prefix)) {
         const suffix = lastName.slice(prefix.length)
@@ -57,9 +55,15 @@ function validateFairyName (name) {
         }
       }
     }
+
+    return false
   }
 
-  return false
+  if (nameParts.length === 1) {
+    return fairyNames['First'].includes(firstName) || validateLastName(firstName)
+  }
+
+  return fairyNames['First'].includes(firstName) && validateLastName(lastName)
 }
 
 function verifyAuthorization (token) {
