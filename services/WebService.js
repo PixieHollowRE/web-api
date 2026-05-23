@@ -45,7 +45,7 @@ function validateFairyName (name) {
   if (nameParts.length > 2) return false
 
   const [firstName, lastName] = nameParts
-  
+
   function validateLastName(lastName) {
     for (const prefix of fairyNames['Prefix']) {
       if (lastName.startsWith(prefix)) {
@@ -425,7 +425,32 @@ app.post('/fairies/api/internal/updateObject/:identifier', async (req, res) => {
     if (!updated) {
       const fairy = await db.retrieveFairy(req.params.identifier)
       if (fairy) {
-        Object.assign(fairy, data)
+        const fairyDNAFieldMap = {
+          talent: 'talent',
+          head: 'avatar.proportions.head',
+          height: 'avatar.proportions.height',
+          body: 'avatar.proportions.body',
+          hair_back: 'avatar.hair_back',
+          hair_front: 'avatar.hair_front',
+          face: 'avatar.face',
+          eye: 'avatar.eye',
+          wing: 'avatar.wing',
+          hair_color: 'avatar.hair_color',
+          hair_color2: 'avatar.hair_color2',
+          eye_color: 'avatar.eye_color',
+          skin_color: 'avatar.skin_color',
+          wing_color: 'avatar.wing_color',
+          gender: 'gender'
+        }
+
+        for (const [key, value] of Object.entries(data)) {
+          if (fairyDNAFieldMap[key]) {
+            fairy.set(fairyDNAFieldMap[key], value)
+          } else {
+            fairy[key] = value
+          }
+        }
+
         await fairy.save()
         updated = true
       }
@@ -833,7 +858,7 @@ app.post('/fairies/api/FairiesEditBioRequest', async (req, res) => {
         answer: parseInt(question.answer[0]),
       }
     }
-    
+
     await fairy.save()
 
     res.send(createXML({

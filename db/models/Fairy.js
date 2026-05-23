@@ -45,6 +45,7 @@ const Fairy = new mongoose.model('Fairy', {
     eye: Number,
     wing: Number,
     hair_color: Number,
+    hair_color2: Number,
     eye_color: Number,
     skin_color: Number,
     wing_color: Number,
