@@ -689,6 +689,10 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         avatarEl.inv_item = []
 
         for (const item of fairy.avatar.items) {
+          if (item.location !== "Equipped") {
+            continue;
+          }
+
           const colors = []
 
           if (typeof item.color1 === 'number' && item.color1 !== 0) {
