@@ -23,7 +23,7 @@ class Database {
   }
 
   async connect() {
-    await mongoose.connect('mongodb://127.0.0.1:27017/PixieHollow')
+    await mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/PixieHollow')
 
     console.log('Connected to MongoDB!')
 
