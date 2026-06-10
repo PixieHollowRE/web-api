@@ -28,8 +28,6 @@ global.app.use(xmlparser())
 
 /* global sess: writeable */
 
-console.log(process.env.MONGO_URI)
-
 // Setup sessions and include our web routes.
 sess = {
   secret: process.env.SESSION_SECRET || 'PixieHollow_secret',
