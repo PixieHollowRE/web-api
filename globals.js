@@ -31,7 +31,7 @@ global.app.use(xmlparser())
 // Setup sessions and include our web routes.
 sess = {
   secret: process.env.SESSION_SECRET || 'PixieHollow_secret',
-  store: MongoStore.create({ mongoUrl: 'mongodb://127.0.0.1:27017/PixieHollow', ttl: 60 * 60 * 24 }),
+  store: MongoStore.create({ mongoUrl: process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/PixieHollow', ttl: 60 * 60 * 24 }),
   resave: false,
   saveUninitialized: true,
 
