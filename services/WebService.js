@@ -874,6 +874,7 @@ app.post('/fairies/api/FairiesEditBioRequest', async (req, res) => {
 
 app.post('/fairies/api/FairiesEditIconRequest', async (req, res) => {
     const iconId = req.body.icon_id
+    const bgId = req.body.game_prof_bg
     const ses = req.session
     const success = true
 
@@ -887,6 +888,7 @@ app.post('/fairies/api/FairiesEditIconRequest', async (req, res) => {
 
     const fairy = await db.retrieveFairy(ses.fairyId)
     fairy.icon = iconId
+    fairy.game_prof_bg = bgId
 
     await fairy.save()
 
