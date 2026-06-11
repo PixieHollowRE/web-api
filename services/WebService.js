@@ -440,7 +440,16 @@ app.post('/fairies/api/internal/updateObject/:identifier', async (req, res) => {
           eye_color: 'avatar.eye_color',
           skin_color: 'avatar.skin_color',
           wing_color: 'avatar.wing_color',
-          gender: 'gender'
+          gender: 'gender',
+          head_rot: 'avatar.rotations.head_rot',
+          ul_arm_rot: 'avatar.rotations.ul_arm_rot',
+          ur_arm_rot: 'avatar.rotations.ur_arm_rot',
+          ll_arm_rot: 'avatar.rotations.ll_arm_rot',
+          lr_arm_rot: 'avatar.rotations.lr_arm_rot',
+          ul_leg_rot: 'avatar.rotations.ul_leg_rot',
+          ur_leg_rot: 'avatar.rotations.ur_leg_rot',
+          ll_leg_rot: 'avatar.rotations.ll_leg_rot',
+          lr_leg_rot: 'avatar.rotations.lr_leg_rot'
         }
 
         for (const [key, value] of Object.entries(data)) {
