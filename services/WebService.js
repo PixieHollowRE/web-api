@@ -754,6 +754,18 @@ app.post('/fairies/api/FairiesNewFairyRequest', async (req, res) => {
     }))
   }
 
+  // Multiple fairies is not supported right now, guard against it for now
+  const existing = await db.retrieveFairyByOwnerAccount(ses.username);
+
+  if (existing) {
+    success = false
+    return res.send(createXML({
+      response: {
+        success
+      }
+    }))
+  }
+
   const fairyId = ses ? await db.createFairy(ses.userId, fairyData) : -1
   ses.fairyId = fairyId
 
