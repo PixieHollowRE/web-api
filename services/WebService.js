@@ -754,7 +754,17 @@ app.post('/fairies/api/FairiesNewFairyRequest', async (req, res) => {
     }))
   }
 
-  // Multiple fairies is not supported right now, guard against it for now
+  // TODO: Why is this happening
+  if (ses.userId == -1) {
+    success = false
+    return res.send(createXML({
+      response: {
+        success
+      }
+    }))
+  }
+
+  // TODO: Support multiple fairies for Pixie Hollow Rewritten
   const existing = await db.retrieveFairyByOwnerAccount(ses.username);
 
   if (existing) {

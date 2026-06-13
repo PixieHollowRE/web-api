@@ -359,12 +359,6 @@ class Database {
       return questions
     }
 
-    if (accountId == -1) {
-      // Bail out instead of saving bad fairy object to database
-      console.error('Something went wrong, bad accountId');
-      return -1;
-    }
-
     const account = await this.retrieveAccountFromIdentifier(accountId)
 
     // Store our fairy.
