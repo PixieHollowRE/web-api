@@ -190,7 +190,7 @@ app.post('/dxd/flashAPI/login', async (req, res) => {
 })
 
 app.post('/dxd/flashAPI/checkUsernameAvailability', async (req, res) => {
-  const username = req.body.username
+  const username = req.body.username.toLowerCase()
   let status
 
   if (process.env.LOCALHOST_INSTANCE === 'true') {
