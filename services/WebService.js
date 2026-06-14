@@ -14,6 +14,10 @@ const {
   resolveFavoriteBadge,
   resolveFavoriteBadgeFromValues
 } = require('../utils/moreOptions')
+const {
+  shouldAckMemberDays,
+  NON_MEMBER_DAYS
+} = require('../utils/loyalty')
 
 const express = require('express')
 
@@ -123,6 +127,26 @@ function buildGameStatEntries (gameStats) {
   return entries
 }
 
+function buildBadgeInvEntries (earnedBadges) {
+  if (!Array.isArray(earnedBadges)) {
+    return []
+  }
+
+  return earnedBadges
+    .filter((entry) => entry && entry.badgeId != null)
+    .map((entry, index) => ({
+      item_id: Number(entry.badgeId),
+      inv_id: Number(entry.badgeId),
+      slot: index
+    }))
+}
+
+function resolveBadgeCount (fairy, earnedBadges) {
+  const earnedCount = earnedBadges.length
+  const storedCount = Number(fairy.badgeCount || 0)
+  return Math.max(storedCount, earnedCount)
+}
+
 function resolveRequestField (body, fieldName) {
   const roots = [
     body,
@@ -191,6 +215,35 @@ async function resolveInventoryFairyId (body, ses) {
   return fairyId > 0 ? fairyId : null
 }
 
+async function resolveProfileFairyId (body, ses) {
+  let fairyId = extractFairyIdFromBody(body)
+
+  const userIdRaw = resolveRequestField(body, 'user_id')
+  const userId = userIdRaw ? parseInt(userIdRaw, 10) : null
+  if (userId !== null && Number.isFinite(userId)) {
+    const account = await db.retrieveAccountFromIdentifier(userId)
+    if (account?.playerId) {
+      fairyId = account.playerId
+    }
+  }
+
+  const current = resolveRequestField(body, 'current')
+  if (current === '1') {
+    return Number(ses?.fairyId || 0) || null
+  }
+
+  if (fairyId > 0) {
+    return fairyId
+  }
+
+  const viewId = Number(ses?.viewProfileFairyId || 0)
+  if (viewId > 0) {
+    return viewId
+  }
+
+  return Number(ses?.fairyId || 0) || null
+}
+
 function generateRandomNumber () {
   return Math.floor(Math.random() * 101)
 }
@@ -238,6 +291,7 @@ async function handleWhoAmIRequest (req, res) {
   let accountId = -1
   let userName = ''
   let speedChatPrompt = 'false'
+  let memberDays = NON_MEMBER_DAYS
 
   if (ses.success || req.query.isFirst === undefined) {
     success = true
@@ -249,8 +303,9 @@ async function handleWhoAmIRequest (req, res) {
     accountId = ses.userId
     userName = ses.username
 
-    const accData = await db.retrieveAccountData(userName)
-    speedChatPrompt = `${Boolean(!accData.SpeedChatPlus)}`
+    const membership = await db.resolveMembershipContext(userName, ses)
+    memberDays = membership.memberDays
+    speedChatPrompt = `${Boolean(!membership.accData.SpeedChatPlus)}`
   }
 
   res.setHeader('content-type', 'text/xml')
@@ -259,6 +314,7 @@ async function handleWhoAmIRequest (req, res) {
       success: success,
       status: status,
       username: userName,
+      member_days: memberDays,
       account: {
         '@account_id': accountId,
         '#': {
@@ -270,7 +326,8 @@ async function handleWhoAmIRequest (req, res) {
           touAccepted: true,
           speed_chat_prompt: speedChatPrompt,
           dname_submitted: true,
-          dname_approved: true
+          dname_approved: true,
+          member_days: memberDays
         }
       },
       userTestAccessAllowed: false,
@@ -737,22 +794,14 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
   const includeAvatar = 'dna' in req.body
   const includeBio = 'bio' in req.body
 
-  let fairyId = extractFairyIdFromBody(req.body) || null
-  const userIdRaw = resolveRequestField(req.body, 'user_id')
-  const userId = userIdRaw ? parseInt(userIdRaw, 10) : null
-
-  if (fairyId === null) {
-    fairyId = ses?.fairyId ?? null
-  }
-
-  if (userId !== null) {
-    // Grab the fairyId from the account instead.
-    const account = await db.retrieveAccountFromIdentifier(userId)
-    fairyId = account.playerId
-  }
+  const fairyId = await resolveProfileFairyId(req.body, ses)
 
   if (fairyId != null) {
-    ses.viewProfileFairyId = fairyId
+    const explicitFairyId = extractFairyIdFromBody(req.body)
+    const viewingOtherFairy = Number(ses.fairyId || 0) !== Number(fairyId)
+    if (explicitFairyId > 0 || viewingOtherFairy) {
+      ses.viewProfileFairyId = fairyId
+    }
   }
 
   const fairyData = await db.retrieveFairy(fairyId)
@@ -775,9 +824,7 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
   responseData.fairies = []
   for (const fairy of fairiesToSend) {
     const earnedBadges = Array.isArray(fairy.earnedBadges) ? fairy.earnedBadges : []
-    const badgeCount = typeof fairy.badgeCount === 'number'
-      ? fairy.badgeCount
-      : earnedBadges.length
+    const badgeCount = resolveBadgeCount(fairy, earnedBadges)
     const newestBadge = typeof fairy.newestBadge === 'number' && fairy.newestBadge > 0
       ? fairy.newestBadge
       : (earnedBadges.length ? Number(earnedBadges[earnedBadges.length - 1].badgeId) : 0)
@@ -786,6 +833,8 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     )
     const previousFavoriteId = Number(fairy.favoriteBadgeId || 0)
     let favoriteBadgeData = resolveFavoriteBadge(fairy)
+    let fairyDirty = false
+    const isOwnFairy = Number(ses.fairyId) === Number(fairy._id)
 
     const wouldClearValidFavorite =
       favoriteBadgeData.favoriteBadgeId <= 0 &&
@@ -799,13 +848,24 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         earnedBadgeIds
       )
     } else if (
-      fairy.moreOptions !== favoriteBadgeData.moreOptions ||
-      Number(fairy.favoriteBadgeId || 0) !== favoriteBadgeData.favoriteBadgeId
+      isOwnFairy &&
+      (
+        fairy.moreOptions !== favoriteBadgeData.moreOptions ||
+        Number(fairy.favoriteBadgeId || 0) !== favoriteBadgeData.favoriteBadgeId
+      )
     ) {
       fairy.moreOptions = favoriteBadgeData.moreOptions
       fairy.favoriteBadgeId = favoriteBadgeData.favoriteBadgeId
-      await fairy.save()
+      fairyDirty = true
     }
+
+    const ownerUsername = fairy.ownerAccount || await db.getUserNameFromAccountId(fairy.accountId)
+    const membership = ownerUsername
+      ? await db.resolveMembershipContext(ownerUsername, ses)
+      : { memberDays: NON_MEMBER_DAYS }
+    const accountMemberDays = membership.memberDays
+    const lastAckMemberDays = Number(fairy.lastAckMemberDays ?? NON_MEMBER_DAYS)
+    const responseMemberDays = accountMemberDays
 
     const fairyEl = {
       '@fairy_id': fairy._id,
@@ -828,8 +888,18 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         icon: fairy.icon,
         game_prof_bg: fairy.game_prof_bg,
         options_mask: fairy.optionsBitmask,
-        level: fairy.level
+        level: fairy.level,
+        member_days: responseMemberDays
       }
+    }
+
+    if (isOwnFairy && shouldAckMemberDays(accountMemberDays, lastAckMemberDays)) {
+      fairy.lastAckMemberDays = accountMemberDays
+      fairyDirty = true
+    }
+
+    if (fairyDirty) {
+      await fairy.save()
     }
 
     if (loggedInFairy) {
@@ -1008,14 +1078,39 @@ app.post('/fairies/api/FairiesInventoryRequest', async (req, res) => {
     }))
   }
 
-  if (requestType === 'stats' && ses?.logged && ses?.fairyId) {
+  if (requestType === 'stats' && ses?.logged) {
+    const fairyId = await resolveInventoryFairyId(req.body, ses)
+    const fairy = fairyId ? await db.retrieveFairy(fairyId) : null
+    const stat = buildGameStatEntries(fairy?.gameStats)
+    const inventory = { type: 'stats' }
+
+    if (stat.length) {
+      inventory.stat = stat
+    }
+
     return res.send(createXML({
       response: {
         success: true,
-        inventory: {
-          type: 'stats',
-          stat: []
-        }
+        inventory
+      }
+    }))
+  }
+
+  if (requestType === 'badges') {
+    const fairyId = await resolveInventoryFairyId(req.body, ses)
+    const fairy = fairyId ? await db.retrieveFairy(fairyId) : null
+    const earnedBadges = Array.isArray(fairy?.earnedBadges) ? fairy.earnedBadges : []
+    const invItem = buildBadgeInvEntries(earnedBadges)
+    const inventory = { type: 'badges' }
+
+    if (invItem.length) {
+      inventory.inv_item = invItem
+    }
+
+    return res.send(createXML({
+      response: {
+        success: true,
+        inventory
       }
     }))
   }

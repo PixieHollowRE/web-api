@@ -4,8 +4,8 @@ mongoose = global.mongoose
 
 const Fairy = new mongoose.model('Fairy', {
   _id: { type: Number },
-  ownerAccount: { type: String },
-  accountId: { type: Number }, // Account object id
+  ownerAccount: { type: String, index: true },
+  accountId: { type: Number, index: true }, // Account object id
   friends: { type: Array }, // Friends list (of Account object ids)
   created: { type: Date, default: Date.now },
   name: String,
@@ -37,6 +37,7 @@ const Fairy = new mongoose.model('Fairy', {
   pouch: { type: Array },
   level: { type: Number, default: 0 },
   dailyChanceLastSpinDay: { type: Number, default: 0 },
+  lastAckMemberDays: { type: Number, default: -1 },
   avatar: {
     proportions: {
       head: Number,
