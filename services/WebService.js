@@ -242,7 +242,7 @@ app.post('/dxd/flashAPI/createAccount', async (req, res) => {
   res.setHeader('content-type', 'text/xml')
   res.send(createXML({
     response: {
-      success: status,
+      success: !!status,
       results: {
         userId: accountId
       }
