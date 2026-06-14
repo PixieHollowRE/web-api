@@ -231,7 +231,7 @@ app.post('/dxd/flashAPI/checkUsernameAvailability', async (req, res) => {
 app.post('/dxd/flashAPI/createAccount', async (req, res) => {
   const username = req.body.username.toLowerCase()
   const status = await db.createAccount(username, req.body.password)
-  const accountId = await db.getAccountIdFromUser(username)
+  const accountId = status ? await db.getAccountIdFromUser(username) : -1
 
   // Start our session if we do not already have one.
   // TODO: Should we redirect instead if they are already signed in?
