@@ -4,6 +4,16 @@
 app = global.app
 
 const createXML = require('../utils/xml')
+const {
+  parseFavoriteBadgeFromMoreOptions,
+  persistFavoriteBadge,
+  extractFairyIdFromBody,
+  resolveFavoriteFromRequest,
+  persistFavoriteFromRequest,
+  repairMoreOptions,
+  resolveFavoriteBadge,
+  resolveFavoriteBadgeFromValues
+} = require('../utils/moreOptions')
 
 const express = require('express')
 
@@ -40,6 +50,15 @@ function parseFairyNames () {
 
 const fairyNames = parseFairyNames()
 
+function parseMinigameIds () {
+  const xml = fs.readFileSync('assets/minigames.xml', 'utf-8')
+  const withoutComments = xml.replace(/<!--[\s\S]*?-->/g, '')
+  const ids = [...withoutComments.matchAll(/id="(\d+)"/g)].map((match) => match[1])
+  return [...new Set(ids)]
+}
+
+const minigameIds = parseMinigameIds()
+
 function validateFairyName (name) {
   const nameParts = name.trim().split(/\s+/)
   if (nameParts.length > 2) return false
@@ -68,6 +87,108 @@ function validateFairyName (name) {
 
 function verifyAuthorization (token) {
   return token === process.env.API_TOKEN
+}
+
+function buildGameStatEntries (gameStats) {
+  let statsById = gameStats
+  if (!statsById || typeof statsById !== 'object') {
+    statsById = {}
+  } else if (typeof statsById.toObject === 'function') {
+    statsById = statsById.toObject()
+  }
+
+  const entries = []
+
+  for (const gameId of minigameIds) {
+    const entry = statsById[gameId] || statsById[String(gameId)] || {}
+    const timesPlayed = Number(entry?.timesPlayed || 0)
+    const bestScore = Number(entry?.bestScore || 0)
+
+    if (timesPlayed <= 0 && bestScore <= 0) {
+      continue
+    }
+
+    entries.push({
+      '#': {
+        stat_id: gameId,
+        count: timesPlayed,
+        best: bestScore,
+        total: timesPlayed,
+        bonus: 0,
+        won: 0
+      }
+    })
+  }
+
+  return entries
+}
+
+function resolveRequestField (body, fieldName) {
+  const roots = [
+    body,
+    body?.fairiesprofilerequest,
+    body?.FairiesProfileRequest,
+    body?.fairiesinventoryrequest,
+    body?.FairiesInventoryRequest
+  ].filter(Boolean)
+
+  for (const root of roots) {
+    const value = unwrapXmlField(root[fieldName])
+    if (value) {
+      return value
+    }
+  }
+
+  return unwrapXmlField(body?.[fieldName])
+}
+
+function unwrapXmlField (value) {
+  if (value === undefined || value === null) {
+    return ''
+  }
+  if (typeof value === 'object' && value._ !== undefined) {
+    return unwrapXmlField(value._)
+  }
+  const raw = Array.isArray(value) ? value[0] : value
+  if (typeof raw === 'object' && raw !== null) {
+    if (raw._ !== undefined) {
+      return unwrapXmlField(raw._)
+    }
+    return ''
+  }
+  return String(raw)
+}
+
+function resolveInventoryRequestType (body) {
+  const roots = [
+    body,
+    body?.fairiesinventoryrequest,
+    body?.FairiesInventoryRequest
+  ].filter(Boolean)
+
+  for (const root of roots) {
+    const type = unwrapXmlField(root.type)
+    if (type) {
+      return type.toLowerCase()
+    }
+  }
+
+  return 'wardrobe'
+}
+
+async function resolveInventoryFairyId (body, ses) {
+  let fairyId = extractFairyIdFromBody(body)
+    || Number(ses?.viewProfileFairyId || 0)
+    || Number(ses?.fairyId || 0)
+
+  if (fairyId <= 0 && ses?.userId) {
+    const byAccount = await db.retrieveFairy(ses.userId)
+    if (byAccount) {
+      fairyId = byAccount._id
+    }
+  }
+
+  return fairyId > 0 ? fairyId : null
 }
 
 function generateRandomNumber () {
@@ -347,17 +468,19 @@ app.get('/fairies/api/internal/retrieveFairy', async (req, res) => {
 
   res.setHeader('content-type', 'application/json')
   if (req.query.identifier) {
-    res.end(JSON.stringify(
-      await db.retrieveFairy(req.query.identifier))
-    )
-    return
+    const fairy = await db.retrieveFairy(req.query.identifier)
+    if (!fairy) {
+      return res.status(404).send({ message: `Fairy ${req.query.identifier} not found` })
+    }
+    return res.end(JSON.stringify(fairy.toObject()))
   }
 
   if (req.query.playToken) {
-    res.end(JSON.stringify(
-      await db.retrieveFairyByOwnerAccount(req.query.playToken))
-    )
-    return
+    const fairy = await db.retrieveFairyByOwnerAccount(req.query.playToken)
+    if (!fairy) {
+      return res.status(404).send({ message: `Fairy for account ${req.query.playToken} not found` })
+    }
+    return res.end(JSON.stringify(fairy.toObject()))
   }
 
   return res.status(400).send({})
@@ -452,12 +575,38 @@ app.post('/fairies/api/internal/updateObject/:identifier', async (req, res) => {
           lr_leg_rot: 'avatar.rotations.lr_leg_rot'
         }
 
+        if (Array.isArray(data.equippedSlots) && data.equippedSlots.length > 0) {
+          db.applyEquippedSlotUpdates(fairy, data.equippedSlots)
+        }
+
         for (const [key, value] of Object.entries(data)) {
+          if (key === 'equippedSlots') {
+            continue
+          }
           if (fairyDNAFieldMap[key]) {
             fairy.set(fairyDNAFieldMap[key], value)
           } else {
             fairy[key] = value
           }
+        }
+
+        if (typeof data.moreOptions === 'string') {
+          const earnedBadges = Array.isArray(fairy.earnedBadges) ? fairy.earnedBadges : []
+          const earnedBadgeIds = new Set(
+            earnedBadges.map((entry) => Number(entry.badgeId))
+          )
+          const repaired = repairMoreOptions(
+            data.moreOptions,
+            Number(fairy.favoriteBadgeId || 0),
+            earnedBadgeIds
+          )
+          fairy.moreOptions = repaired
+          fairy.favoriteBadgeId = parseFavoriteBadgeFromMoreOptions(repaired)
+        }
+
+        const directFavoriteBadgeId = Number(data.favoriteBadgeId || 0)
+        if (directFavoriteBadgeId > 0) {
+          await persistFavoriteBadge(fairy, directFavoriteBadgeId)
         }
 
         await fairy.save()
@@ -588,12 +737,11 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
   const includeAvatar = 'dna' in req.body
   const includeBio = 'bio' in req.body
 
-  let fairyId = req.body.fairy_id ?? null
-  const userId = req.body.user_id ?? null
+  let fairyId = extractFairyIdFromBody(req.body) || null
+  const userIdRaw = resolveRequestField(req.body, 'user_id')
+  const userId = userIdRaw ? parseInt(userIdRaw, 10) : null
 
-  if (fairyId !== null) {
-    fairyId = parseInt(fairyId)
-  } else {
+  if (fairyId === null) {
     fairyId = ses?.fairyId ?? null
   }
 
@@ -601,6 +749,10 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     // Grab the fairyId from the account instead.
     const account = await db.retrieveAccountFromIdentifier(userId)
     fairyId = account.playerId
+  }
+
+  if (fairyId != null) {
+    ses.viewProfileFairyId = fairyId
   }
 
   const fairyData = await db.retrieveFairy(fairyId)
@@ -622,11 +774,50 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
 
   responseData.fairies = []
   for (const fairy of fairiesToSend) {
+    const earnedBadges = Array.isArray(fairy.earnedBadges) ? fairy.earnedBadges : []
+    const badgeCount = typeof fairy.badgeCount === 'number'
+      ? fairy.badgeCount
+      : earnedBadges.length
+    const newestBadge = typeof fairy.newestBadge === 'number' && fairy.newestBadge > 0
+      ? fairy.newestBadge
+      : (earnedBadges.length ? Number(earnedBadges[earnedBadges.length - 1].badgeId) : 0)
+    const earnedBadgeIds = new Set(
+      earnedBadges.map((entry) => Number(entry.badgeId))
+    )
+    const previousFavoriteId = Number(fairy.favoriteBadgeId || 0)
+    let favoriteBadgeData = resolveFavoriteBadge(fairy)
+
+    const wouldClearValidFavorite =
+      favoriteBadgeData.favoriteBadgeId <= 0 &&
+      previousFavoriteId > 0 &&
+      earnedBadgeIds.has(previousFavoriteId)
+
+    if (wouldClearValidFavorite) {
+      favoriteBadgeData = resolveFavoriteBadgeFromValues(
+        fairy.moreOptions,
+        previousFavoriteId,
+        earnedBadgeIds
+      )
+    } else if (
+      fairy.moreOptions !== favoriteBadgeData.moreOptions ||
+      Number(fairy.favoriteBadgeId || 0) !== favoriteBadgeData.favoriteBadgeId
+    ) {
+      fairy.moreOptions = favoriteBadgeData.moreOptions
+      fairy.favoriteBadgeId = favoriteBadgeData.favoriteBadgeId
+      await fairy.save()
+    }
+
     const fairyEl = {
       '@fairy_id': fairy._id,
       '#': {
         address: fairy.address,
-        more_options: fairy.moreOptions,
+        more_options: favoriteBadgeData.moreOptions,
+        badge_count: badgeCount,
+        total_badges: badgeCount,
+        newest_badge: newestBadge,
+        recent_badge: newestBadge,
+        fav_badge: favoriteBadgeData.favoriteBadgeId,
+        favorite_badge: favoriteBadgeData.favoriteBadgeId,
         tutorial: fairy.tutorialBitmask[0],
         tutorial_hi: fairy.tutorialBitmask[1],
         created: fairy.created.toISOString().split('T')[0],
@@ -765,7 +956,7 @@ app.post('/fairies/api/FairiesNewFairyRequest', async (req, res) => {
   }
 
   // TODO: Support multiple fairies for Pixie Hollow Rewritten
-  const existing = await db.retrieveFairyByOwnerAccount(ses.username);
+  const existing = await db.retrieveFairyByOwnerAccount(ses.username)
 
   if (existing) {
     success = false
@@ -795,7 +986,40 @@ app.post('/fairies/api/ChooseFairyRequest', (req, res) => {
   }))
 })
 
-app.post('/fairies/api/FairiesInventoryRequest', (req, res) => {
+app.post('/fairies/api/FairiesInventoryRequest', async (req, res) => {
+  const ses = req.session
+  const requestType = resolveInventoryRequestType(req.body)
+
+  if (requestType === 'games') {
+    const fairyId = await resolveInventoryFairyId(req.body, ses)
+    const fairy = fairyId ? await db.retrieveFairy(fairyId) : null
+    const stat = buildGameStatEntries(fairy?.gameStats)
+    const inventory = { type: 'games' }
+
+    if (stat.length) {
+      inventory.stat = stat
+    }
+
+    return res.send(createXML({
+      response: {
+        success: true,
+        inventory
+      }
+    }))
+  }
+
+  if (requestType === 'stats' && ses?.logged && ses?.fairyId) {
+    return res.send(createXML({
+      response: {
+        success: true,
+        inventory: {
+          type: 'stats',
+          stat: []
+        }
+      }
+    }))
+  }
+
   const items = [
     { item_id: 2501, inv_id: 3612, slot: 0, created_by_id: 0, gifted_by_id: 0, quality: 3, color: { number: 1, value: 37 } },
     { item_id: 2503, inv_id: 3876, slot: 1, created_by_id: 0, gifted_by_id: 0, quality: 3, color: { number: 1, value: 39 } },
@@ -928,4 +1152,72 @@ app.post('/fairies/api/FairiesEditIconRequest', async (req, res) => {
         success
       }
     }))
+})
+
+async function resolveRequestFairy (req) {
+  const ses = req.session
+  if (!ses?.logged) {
+    return null
+  }
+
+  let fairyId = Number(ses.fairyId || 0)
+  const bodyFairyId = extractFairyIdFromBody(req.body)
+  if (bodyFairyId > 0) {
+    fairyId = bodyFairyId
+  }
+
+  if (fairyId <= 0 && ses.userId) {
+    const byAccount = await db.retrieveFairy(ses.userId)
+    if (byAccount) {
+      fairyId = byAccount._id
+    }
+  }
+
+  if (fairyId <= 0) {
+    return null
+  }
+
+  return db.retrieveFairy(fairyId)
+}
+
+async function handleFavoriteBadgeRequest (req, res) {
+  const favoriteRequest = resolveFavoriteFromRequest(req.body)
+  const badgeId = favoriteRequest.badgeId
+
+  const fairy = await resolveRequestFairy(req)
+  if (!fairy) {
+    return res.send(createXML({
+      response: {
+        success: false
+      }
+    }))
+  }
+
+  if (badgeId <= 0) {
+    return res.send(createXML({
+      response: {
+        success: false
+      }
+    }))
+  }
+
+  const saved = await persistFavoriteFromRequest(fairy, favoriteRequest)
+
+  if (!saved) {
+    return res.send(createXML({
+      response: {
+        success: false
+      }
+    }))
+  }
+
+  return res.send(createXML({
+    response: {
+      success: true
+    }
+  }))
+}
+
+app.post('/fairies/api/UpdateFavoriteBadgeRequest', (req, res) => {
+  return handleFavoriteBadgeRequest(req, res)
 })

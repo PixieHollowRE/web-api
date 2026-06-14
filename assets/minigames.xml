@@ -1,0 +1,24 @@
+<!-- used by the high score tab in profile panel, anyplace else? -->
+<minigames>
+	<game id="13073" name="Animal Derby" />
+	<game id="2" name="Bubble Bounce" requiredForHighScoreBadge="15000"/>
+	<game id="45" name="Butterfly Painter" requiredForHighScoreBadge="50000"/>
+	<game id="13070" name="Crazy Cakes" />
+	<game id="10" name="Fairy Fireworks" requiredForHighScoreBadge="50000"/>
+	<game id="1" name="Firefly Light-Up" requiredForHighScoreBadge="40000"/>
+	<game id="44" name="First Flight" requiredForHighScoreBadge="85000"/>
+	<game id="49" name="Gem Juggle" requiredForHighScoreBadge="155000"/>
+	<game id="8" name="Harvest Hustle" requiredForHighScoreBadge="55000"/>
+	<game id="9" name="Petal Pick-Up" requiredForHighScoreBadge="40000"/>
+	<game id="47" name="Pinecone Pop" requiredForHighScoreBadge="100000"/>
+	<game id="43" name="Seed Sorter" requiredForHighScoreBadge="130000"/>
+	<game id="11" name="Snowflake Sweep" requiredForHighScoreBadge="50000"/>
+	<game id="15" name="Snowy Lullaby" requiredForHighScoreBadge="20000"/>
+	<game id="48" name="Sunbeam Bend" requiredForHighScoreBadge="50000"/>
+	<!--
+	<game id="48" onlyShowForTags="Meadow_SunbeamBend" name="Sunbeam Bend" requiredForHighScoreBadge="50000"/>
+-->
+	<game id="14" name="Tinker Toss" requiredForHighScoreBadge="70000"/>
+	<game id="13072" name="Two for Tea" />
+	<game id="7" name="Water Web" requiredForHighScoreBadge="110000"/>
+</minigames>
