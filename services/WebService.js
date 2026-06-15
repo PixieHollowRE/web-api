@@ -28,6 +28,102 @@ const { XMLParser } = require('fast-xml-parser')
 
 const loginQueue = []
 
+function dedupeFriendsPreserveOrder(friends) {
+  if (!Array.isArray(friends)) {
+    return friends
+  }
+
+  const seen = new Set()
+  const normalized = []
+
+  for (const raw of friends) {
+    const id = Number(raw)
+    if (!Number.isFinite(id) || id <= 0) {
+      continue
+    }
+    if (seen.has(id)) {
+      continue
+    }
+    seen.add(id)
+    normalized.push(id)
+  }
+
+  return normalized
+}
+
+async function sanitizeFriendsForWrite(friends, fairy) {
+  if (!Array.isArray(friends)) {
+    return friends
+  }
+
+  const playToken = fairy.ownerAccount
+  const fairyId = Number(fairy._id)
+  const accountId = Number(fairy.accountId || 0)
+  let normalized = dedupeFriendsPreserveOrder(friends)
+
+  if (normalized.length !== friends.length) {
+    console.warn(
+      `setFairyData: deduped friends[] for playToken=${playToken} (${friends.length} -> ${normalized.length})`
+    )
+  }
+
+  normalized = normalized.filter((id) => {
+    if (id === fairyId) {
+      console.warn(
+        `setFairyData: removed fairy _id=${fairyId} from friends[] for playToken=${playToken} (expected accountId)`
+      )
+      return false
+    }
+    if (accountId && id === accountId) {
+      return false
+    }
+    return true
+  })
+
+  if (!normalized.length) {
+    return normalized
+  }
+
+  const Fairy = require('../db/models/Fairy')
+  const avatarDocs = await Fairy.find(
+    { _id: { $in: normalized } },
+    { _id: 1, accountId: 1 }
+  ).lean()
+
+  if (!avatarDocs.length) {
+    return normalized
+  }
+
+  const avatarIdToAccountId = new Map(
+    avatarDocs
+      .filter((doc) => Number(doc.accountId) > 0 && Number(doc._id) !== Number(doc.accountId))
+      .map((doc) => [Number(doc._id), Number(doc.accountId)])
+  )
+
+  if (!avatarIdToAccountId.size) {
+    return normalized
+  }
+
+  const remapped = []
+  const seen = new Set()
+  for (const id of normalized) {
+    let resolved = id
+    if (avatarIdToAccountId.has(id)) {
+      resolved = avatarIdToAccountId.get(id)
+      console.warn(
+        `setFairyData: friends[] contained avatar _id=${id} for playToken=${playToken}; remapped to accountId=${resolved}`
+      )
+    }
+    if (seen.has(resolved)) {
+      continue
+    }
+    seen.add(resolved)
+    remapped.push(resolved)
+  }
+
+  return remapped
+}
+
 app.get('/', (req, res) => {
   res.send('Pixie Hollow API service.')
 })
@@ -507,6 +603,9 @@ app.post('/fairies/api/internal/setFairyData', async (req, res) => {
     console.log(
       `setFairyData: playToken=${data.playToken} fairyId=${fairy._id} fields=${JSON.stringify(Object.keys(data.fieldData))}`
     )
+    if (Object.prototype.hasOwnProperty.call(data.fieldData, 'friends')) {
+      data.fieldData.friends = await sanitizeFriendsForWrite(data.fieldData.friends, fairy)
+    }
     Object.assign(fairy, data.fieldData)
     await fairy.save()
     return res.status(200).send({ success: true, message: 'Success.' })
@@ -818,7 +917,7 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
   const ses = req.session
 
   const loggedInFairy = false
-  const includeAvatar = 'dna' in req.body
+  const includeAvatarExplicit = 'dna' in req.body
   const includeBio = 'bio' in req.body
 
   const fairyId = await resolveProfileFairyId(req.body, ses)
@@ -884,6 +983,9 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     }
 
     const ownerUsername = fairy.ownerAccount || await db.getUserNameFromAccountId(fairy.accountId)
+    if (ownerUsername) {
+      responseData.user_name = ownerUsername
+    }
     const membership = ownerUsername
       ? await db.resolveMembershipContext(ownerUsername, ses)
       : { memberDays: NON_MEMBER_DAYS }
@@ -913,7 +1015,8 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         game_prof_bg: fairy.game_prof_bg,
         options_mask: fairy.optionsBitmask,
         level: fairy.level,
-        member_days: responseMemberDays
+        member_days: responseMemberDays,
+        user_id: fairy.accountId
       }
     }
 
@@ -943,29 +1046,39 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
       }]
     }
 
+    const includeAvatar = includeAvatarExplicit || Boolean(fairy.avatar)
+
     if (includeAvatar && fairy.avatar) {
       const avatarEl = {}
 
+      const proportions = []
       if (fairy.avatar.proportions) {
         for (const [type, value] of Object.entries(fairy.avatar.proportions)) {
           if (value != null) {
-            avatarEl.proportion = {
+            proportions.push({
               '@type': type.toUpperCase(),
               '#': value
-            }
+            })
           }
         }
       }
+      if (proportions.length > 0) {
+        avatarEl.proportion = proportions
+      }
 
+      const rotations = []
       if (fairy.avatar.rotations) {
         for (const [type, value] of Object.entries(fairy.avatar.rotations)) {
           if (value != null) {
-            avatarEl.rotation = {
+            rotations.push({
               '@type': type.toUpperCase(),
               '#': value
-            }
+            })
           }
         }
+      }
+      if (rotations.length > 0) {
+        avatarEl.rotation = rotations
       }
 
       const simpleFields = [
