@@ -119,6 +119,10 @@ class Database {
       userId: accountId
     }
 
+    if (loginType !== 'swid') {
+      await this.createSession(req, username, accountId, false)
+    }
+
     res.setHeader('content-type', 'text/xml')
     res.send(createXML({
       result: responseData
@@ -174,10 +178,15 @@ class Database {
     ses.status = 'logged_in_player'
     ses.logged = true
     ses.userId = accountId
+    ses.viewProfileFairyId = null
+    ses.fairyId = null
 
     if (!justRegistered) {
-      const fairy = await this.retrieveFairy(accountId)
-      ses.fairyId = fairy._id
+      const fairy = await this.retrieveFairyByOwnerAccount(username)
+        || await this.retrieveFairyByAccountId(accountId)
+      if (fairy) {
+        ses.fairyId = fairy._id
+      }
     }
   }
 
@@ -209,6 +218,97 @@ class Database {
     }
 
     return false
+  }
+
+  async retrieveFairyById(fairyId) {
+    const id = Number(fairyId)
+    if (!Number.isFinite(id) || id <= 0) {
+      return false
+    }
+
+    return Fairy.findOne({ _id: id }) || false
+  }
+
+  async retrieveFairyByAccountId(accountId) {
+    const id = Number(accountId)
+    if (!Number.isFinite(id) || id <= 0) {
+      return false
+    }
+
+    return Fairy.findOne({ accountId: id }) || false
+  }
+
+  fairyBelongsToSession(fairy, ses) {
+    if (!fairy || !ses?.logged) {
+      return false
+    }
+
+    const owner = String(fairy.ownerAccount || '').toLowerCase()
+    const sessionUser = String(ses.username || '').toLowerCase()
+    if (owner && sessionUser && owner === sessionUser) {
+      return true
+    }
+
+    if (ses.userId && Number(fairy.accountId) === Number(ses.userId)) {
+      return true
+    }
+
+    return false
+  }
+
+  async resolveWritableSessionFairy(req) {
+    const ses = req.session
+    if (!ses?.logged) {
+      return null
+    }
+
+    let fairy = null
+    if (ses.username) {
+      fairy = await this.retrieveFairyByOwnerAccount(ses.username)
+    }
+
+    if (!fairy && Number(ses.fairyId || 0) > 0) {
+      fairy = await this.retrieveFairyById(ses.fairyId)
+      if (fairy && !this.fairyBelongsToSession(fairy, ses)) {
+        fairy = null
+      }
+    }
+
+    if (!fairy && ses.userId) {
+      fairy = await this.retrieveFairyByAccountId(ses.userId)
+    }
+
+    if (!fairy || !this.fairyBelongsToSession(fairy, ses)) {
+      return null
+    }
+
+    ses.fairyId = fairy._id
+    return fairy
+  }
+
+  async updateOwnedFairyFields(fairy, ses, fields) {
+    if (!fairy || !ses?.username || !this.fairyBelongsToSession(fairy, ses)) {
+      return false
+    }
+
+    if (!fields || !Object.keys(fields).length) {
+      return false
+    }
+
+    const ownerAccount = String(ses.username).toLowerCase()
+    const result = await Fairy.findOneAndUpdate(
+      { _id: fairy._id, ownerAccount },
+      { $set: fields }
+    )
+
+    return !!result
+  }
+
+  async updateFavoriteBadgeForSessionOwner(fairy, ses, badgeId, moreOptions) {
+    return this.updateOwnedFairyFields(fairy, ses, {
+      favoriteBadgeId: badgeId,
+      moreOptions
+    })
   }
 
   async retrieveFairyByOwnerAccount(owner) {
