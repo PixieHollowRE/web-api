@@ -13,6 +13,14 @@ const bcrypt = require('bcrypt')
 
 const axios = require('axios').default
 
+const {
+  computeMemberDays,
+  isMember,
+  parseMembershipStartDate,
+  readPrecountedMemberDays,
+  canonicalArrivalDate
+} = require('../utils/loyalty')
+
 const saltRounds = 12
 
 const userAgent = 'Sunrise Games - Pixie Hollow API'
@@ -248,6 +256,62 @@ class Database {
     return request.data
   }
 
+  async resolveMembershipContext (username, session = null) {
+    const cacheKey = username.toLowerCase()
+    if (session) {
+      if (!session.membershipByUser) {
+        session.membershipByUser = {}
+      }
+      if (session.membershipByUser[cacheKey]) {
+        return session.membershipByUser[cacheKey]
+      }
+    }
+
+    const [accData, localAccount] = await Promise.all([
+      this.retrieveAccountData(username),
+      Account.findOne({ username }).select('membershipStartDate _id username')
+    ])
+
+    let membershipStartDate = localAccount?.membershipStartDate || null
+    const hasSunriseStart = Boolean(parseMembershipStartDate(accData))
+    const hasPrecountedDays = readPrecountedMemberDays(accData) !== null
+
+    if (
+      localAccount &&
+      !hasSunriseStart &&
+      !hasPrecountedDays &&
+      !membershipStartDate
+    ) {
+      const fairy = await Fairy.findOne({
+        $or: [
+          { accountId: localAccount._id },
+          { ownerAccount: username }
+        ]
+      }).select('created')
+
+      const arrivalDate = canonicalArrivalDate(fairy, localAccount) || new Date()
+      membershipStartDate = arrivalDate
+      await Account.updateOne(
+        { _id: localAccount._id },
+        { $set: { membershipStartDate } }
+      )
+    }
+
+    const memberDays = computeMemberDays(accData, membershipStartDate)
+    const value = {
+      accData,
+      localAccount,
+      memberDays,
+      membershipStartDate
+    }
+
+    if (session) {
+      session.membershipByUser[cacheKey] = value
+    }
+
+    return value
+  }
+
   async checkLogin(username, password) {
     const data = new URLSearchParams()
 
@@ -360,12 +424,14 @@ class Database {
     }
 
     const account = await this.retrieveAccountFromIdentifier(accountId)
+    const arrivalDate = new Date()
 
     // Store our fairy.
     const fairy = new Fairy({
       _id: await this.getNextDoId(),
       ownerAccount: await this.getUserNameFromAccountId(accountId),
       accountId,
+      created: arrivalDate,
       name: fairyData.name[0],
       talent: parseInt(fairyData.talent[0]),
       gender: parseInt(fairyData.gender[0]),
@@ -390,6 +456,9 @@ class Database {
 
     // Save the information into the account.
     account.playerId = fairy._id
+    if (!account.membershipStartDate) {
+      account.membershipStartDate = arrivalDate
+    }
     await account.save()
 
     return saved._id

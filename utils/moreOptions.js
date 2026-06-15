@@ -171,65 +171,70 @@ function extractFavoriteBadgeId (body) {
   return 0
 }
 
-function extractStringFieldFromBody (body, fieldKeys) {
-  if (!body || typeof body !== 'object') {
+const PROFILE_REQUEST_ROOTS = (body) => [
+  body?.fairiesprofilerequest,
+  body?.FairiesProfileRequest
+].filter(Boolean)
+
+function unwrapXmlStringField (value) {
+  if (value === undefined || value === null) {
+    return ''
+  }
+  if (typeof value === 'object' && value._ !== undefined) {
+    return unwrapXmlStringField(value._)
+  }
+  const raw = Array.isArray(value) ? value[0] : value
+  if (typeof raw === 'object' && raw !== null) {
+    return ''
+  }
+  return String(raw)
+}
+
+function extractStringFieldFromNode (node, fieldKeys) {
+  if (!node || typeof node !== 'object') {
     return ''
   }
 
-  const unwrap = (value) => {
-    if (value === undefined || value === null) {
-      return ''
-    }
-    if (typeof value === 'object' && value._ !== undefined) {
-      return unwrap(value._)
-    }
-    const raw = Array.isArray(value) ? value[0] : value
-    if (typeof raw === 'object' && raw !== null) {
-      return ''
-    }
-    return String(raw)
-  }
-
-  const walk = (node) => {
-    if (!node || typeof node !== 'object') {
-      return ''
-    }
-
-    if (node.$ && typeof node.$ === 'object') {
-      for (const key of fieldKeys) {
-        const parsed = unwrap(node.$[key])
-        if (parsed) {
-          return parsed
-        }
-      }
-    }
-
+  if (node.$ && typeof node.$ === 'object') {
     for (const key of fieldKeys) {
-      const parsed = unwrap(node[key])
+      const parsed = unwrapXmlStringField(node.$[key])
       if (parsed) {
         return parsed
       }
     }
+  }
 
-    for (const [key, value] of Object.entries(node)) {
-      if (key === '$') {
-        continue
-      }
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          const parsed = walk(item)
-          if (parsed) {
-            return parsed
-          }
-        }
-      } else if (typeof value === 'object' && value !== null) {
-        const parsed = walk(value)
+  for (const key of fieldKeys) {
+    const parsed = unwrapXmlStringField(node[key])
+    if (parsed) {
+      return parsed
+    }
+  }
+
+  for (const [key, value] of Object.entries(node)) {
+    if (key === '$') {
+      continue
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const parsed = extractStringFieldFromNode(item, fieldKeys)
         if (parsed) {
           return parsed
         }
       }
+    } else if (typeof value === 'object' && value !== null) {
+      const parsed = extractStringFieldFromNode(value, fieldKeys)
+      if (parsed) {
+        return parsed
+      }
     }
+  }
 
+  return ''
+}
+
+function extractStringFieldFromBody (body, fieldKeys) {
+  if (!body || typeof body !== 'object') {
     return ''
   }
 
@@ -238,7 +243,7 @@ function extractStringFieldFromBody (body, fieldKeys) {
   for (const root of roots) {
     const items = Array.isArray(root) ? root : [root]
     for (const item of items) {
-      const parsed = walk(item)
+      const parsed = extractStringFieldFromNode(item, fieldKeys)
       if (parsed) {
         return parsed
       }
@@ -257,10 +262,29 @@ function extractMoreOptionsFromBody (body) {
 }
 
 function extractFairyIdFromBody (body) {
+  const profileFieldKeys = [
+    'fairy_id',
+    'fairyId',
+    'fairyid',
+    'id'
+  ]
+
+  for (const root of PROFILE_REQUEST_ROOTS(body)) {
+    const items = Array.isArray(root) ? root : [root]
+    for (const item of items) {
+      const raw = extractStringFieldFromNode(item, profileFieldKeys)
+      const parsed = Number(raw)
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed
+      }
+    }
+  }
+
   const raw = extractStringFieldFromBody(body, [
     'fairy_id',
     'fairyId',
-    'fairyid'
+    'fairyid',
+    'id'
   ])
   const parsed = Number(raw)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
