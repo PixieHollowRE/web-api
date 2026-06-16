@@ -28,6 +28,28 @@ const { XMLParser } = require('fast-xml-parser')
 
 const loginQueue = []
 
+const PACIFIC_TIME_ZONE = 'America/Los_Angeles'
+
+function getPacificServerTime () {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: PACIFIC_TIME_ZONE,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: false
+    }).formatToParts(new Date()).map(({ type, value }) => [type, value])
+  )
+  const hour = Number(parts.hour) % 24
+  const minute = Number(parts.minute)
+  return {
+    day: `${parts.year}/${parts.month}/${parts.day}`,
+    time: `${hour}:${String(minute).padStart(2, '0')}`
+  }
+}
+
 // Coliseum leaderboard panel requests dna=1 and queues AvatarBustBitmapRequest per row.
 // Fairies without avatar DNA leave the panel stuck on the loading hourglass.
 const MINIMAL_PROFILE_AVATAR = {
@@ -823,10 +845,7 @@ async function handleWhoAmIRequest (req, res) {
         }
       },
       userTestAccessAllowed: false,
-      'server-time': {
-        day: new Date().toLocaleDateString('en-ZA'),
-        time: new Date().toLocaleTimeString('en-ZA')
-      },
+      'server-time': getPacificServerTime(),
       fairy_id: ses.fairyId
     }
   }))
