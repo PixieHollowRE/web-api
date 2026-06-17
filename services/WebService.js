@@ -347,7 +347,7 @@ function buildAvatarXmlEl(avatarForResponse, gender) {
 
   for (const field of [
     'hair_back', 'hair_front', 'face', 'eye', 'wing',
-    'hair_color', 'eye_color', 'skin_color', 'wing_color'
+    'hair_color', 'hair_color2', 'eye_color', 'skin_color', 'wing_color'
   ]) {
     if (avatarForResponse[field] != null) {
       avatarEl[field] = avatarForResponse[field]
@@ -1512,7 +1512,7 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
 
       const simpleFields = [
         'hair_back', 'hair_front', 'face', 'eye', 'wing',
-        'hair_color', 'eye_color', 'skin_color', 'wing_color'
+        'hair_color', 'hair_color2', 'eye_color', 'skin_color', 'wing_color'
       ]
       for (const field of simpleFields) {
         if (avatarForResponse[field] != null) {

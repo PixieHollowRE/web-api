@@ -545,6 +545,7 @@ class Database {
         eye: parseInt(avatar.eye[0]),
         wing: parseInt(avatar.wing[0]),
         hair_color: parseInt(avatar.hair_color[0]),
+        hair_color2: avatar.hair_color2 ? parseInt(avatar.hair_color2[0]) : 0,
         eye_color: parseInt(avatar.eye_color[0]),
         skin_color: parseInt(avatar.skin_color[0]),
         wing_color: parseInt(avatar.wing_color[0]),
