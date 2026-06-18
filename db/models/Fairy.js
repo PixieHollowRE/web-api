@@ -38,8 +38,6 @@ const Fairy = new mongoose.model('Fairy', {
   level: { type: Number, default: 0 },
   dailyChanceLastSpinDay: { type: Number, default: 0 },
   lastAckMemberDays: { type: Number, default: -1 },
-  banned: { type: Number, default: 0 },
-  terminated: { type: Number, default: 0 },
   avatar: {
     proportions: {
       head: Number,
