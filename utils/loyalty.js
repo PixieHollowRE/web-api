@@ -114,6 +114,23 @@ function shouldAckMemberDays (accountMemberDays, lastAckMemberDays) {
   return loyaltyTier(accountMemberDays) > loyaltyTier(ack)
 }
 
+// member_days snapped down to tier boundary (tier * 90). Non-members: -1.
+// WhoAmI uses this so the client pin lands on exact bucket edges (max 1350).
+function snapMemberDaysToTier (memberDays) {
+  const tier = loyaltyTier(memberDays)
+  return tier < 0 ? NON_MEMBER_DAYS : tier * LOYALTY_PERIOD_DAYS
+}
+
+// Profile fairy member_days: last tier the client acknowledged (-1 = never).
+// Snap stored ack to tier boundary so day drift cannot re-trigger the popup.
+function memberDaysForProfileAck (lastAckMemberDays) {
+  const ack = Number(lastAckMemberDays ?? NON_MEMBER_DAYS)
+  if (ack < 0) {
+    return NON_MEMBER_DAYS
+  }
+  return snapMemberDaysToTier(ack)
+}
+
 function membershipStartDateForMemberDays (memberDays, now = new Date()) {
   return new Date(now.getTime() - memberDays * 86400000)
 }
@@ -162,6 +179,8 @@ module.exports = {
   computeMemberDays,
   loyaltyTier,
   shouldAckMemberDays,
+  snapMemberDaysToTier,
+  memberDaysForProfileAck,
   membershipStartDateForMemberDays,
   utcCalendarDay,
   datesMatch,

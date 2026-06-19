@@ -16,6 +16,8 @@ const {
 } = require('../utils/moreOptions')
 const {
   shouldAckMemberDays,
+  snapMemberDaysToTier,
+  memberDaysForProfileAck,
   NON_MEMBER_DAYS
 } = require('../utils/loyalty')
 
@@ -818,7 +820,7 @@ async function handleWhoAmIRequest (req, res) {
     userName = ses.username
 
     const membership = await db.resolveMembershipContext(userName, ses)
-    memberDays = membership.memberDays
+    memberDays = snapMemberDaysToTier(membership.memberDays)
     speedChatPrompt = `${Boolean(!membership.accData.SpeedChatPlus)}`
   }
 
@@ -1417,7 +1419,7 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
       : { memberDays: NON_MEMBER_DAYS }
     const accountMemberDays = membership.memberDays
     const lastAckMemberDays = Number(fairy.lastAckMemberDays ?? NON_MEMBER_DAYS)
-    const responseMemberDays = accountMemberDays
+    const responseMemberDays = memberDaysForProfileAck(lastAckMemberDays)
 
     const [tutorialLo, tutorialHi] = profileTutorialBitmask(fairy)
 
@@ -1450,8 +1452,8 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
 
     if (isOwnFairy && shouldAckMemberDays(accountMemberDays, lastAckMemberDays)) {
       profileWritePatch = profileWritePatch || {}
-      profileWritePatch.lastAckMemberDays = accountMemberDays
-      fairy.lastAckMemberDays = accountMemberDays
+      profileWritePatch.lastAckMemberDays = snapMemberDaysToTier(accountMemberDays)
+      fairy.lastAckMemberDays = profileWritePatch.lastAckMemberDays
     }
 
     if (profileWritePatch && sessionOwnFairy) {

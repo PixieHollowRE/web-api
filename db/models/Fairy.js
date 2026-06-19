@@ -37,7 +37,9 @@ const Fairy = new mongoose.model('Fairy', {
   pouch: { type: Array },
   level: { type: Number, default: 0 },
   dailyChanceLastSpinDay: { type: Number, default: 0 },
-  lastAckMemberDays: { type: Number, default: -1 },
+  // DEPRECATED v1 field (raw days). -1 means "pin never shown". No default —
+  // undefined is treated as -1 at read time; omit on new fairies until first ack.
+  lastAckMemberDays: { type: Number },
   avatar: {
     proportions: {
       head: Number,
