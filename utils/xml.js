@@ -9,4 +9,11 @@ function createXML (data) {
   return xml
 }
 
+function createCompactXML (data) {
+  return create()
+    .ele(data)
+    .end({ prettyPrint: false })
+}
+
 module.exports = createXML
+module.exports.createCompactXML = createCompactXML

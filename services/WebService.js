@@ -4,6 +4,7 @@
 app = global.app
 
 const createXML = require('../utils/xml')
+const createCompactXML = createXML.createCompactXML
 const {
   parseFavoriteBadgeFromMoreOptions,
   persistFavoriteBadge,
@@ -104,10 +105,6 @@ function isSyntheticLeaderboardOwner(ownerUsername) {
   return typeof ownerUsername === 'string' && ownerUsername.startsWith('__leaderboard_')
 }
 
-const LEADERBOARD_BUST_XML_CACHE = new Map()
-const LEADERBOARD_BUST_XML_CACHE_LIMIT = 512
-const LEADERBOARD_SNAPSHOT_BY_ID = new Map()
-
 function minimalLeaderboardBustFairy(fairyId) {
   return {
     _id: Number(fairyId),
@@ -147,159 +144,49 @@ function fairyFromLeaderboardEntry(entry) {
   }
 }
 
+function ensureLeaderboardBustAvatar(fairy) {
+  if (!profileAvatarSource(fairy, true)) {
+    fairy.avatar = MINIMAL_PROFILE_AVATAR
+  }
+  return fairy
+}
+
 async function loadLeaderboardSnapshotFairy(fairyId) {
   const idNum = Number(fairyId)
   if (!Number.isFinite(idNum) || idNum <= 0) {
     return null
   }
 
-  const cached = LEADERBOARD_SNAPSHOT_BY_ID.get(idNum)
-  if (cached) {
-    return cached
-  }
-
   const coll = db.db.collection('leaderboard_data')
   const meta = await coll.findOne({ _id: 'meta' })
   const weekId = meta?.currentWeeklyId
-  if (!weekId) {
+  const seasonId = meta?.currentSeasonId
+  if (!weekId && !seasonId) {
     return null
   }
 
-  const escapedWeek = String(weekId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const docs = await coll.find({
-    _id: { $regex: `^weekly:\\d+:${escapedWeek}$` }
-  }).toArray()
+  const docQueries = []
+  if (weekId) {
+    const escapedWeek = String(weekId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    docQueries.push({ _id: { $regex: `^weekly:\\d+:${escapedWeek}$` } })
+  }
+  if (seasonId) {
+    const escapedSeason = String(seasonId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    docQueries.push({ _id: { $regex: `^seasonal:\\d+:${escapedSeason}$` } })
+  }
 
-  for (const doc of docs) {
-    for (const entry of doc.entries || []) {
-      if (Number(entry.avId) === idNum) {
-        const fairy = fairyFromLeaderboardEntry(entry)
-        LEADERBOARD_SNAPSHOT_BY_ID.set(idNum, fairy)
-        return fairy
+  for (const query of docQueries) {
+    const docs = await coll.find(query).toArray()
+    for (const doc of docs) {
+      for (const entry of doc.entries || []) {
+        if (Number(entry.avId) === idNum) {
+          return ensureLeaderboardBustAvatar(fairyFromLeaderboardEntry(entry))
+        }
       }
     }
   }
+
   return null
-}
-
-function cacheLeaderboardBustXml(fairyId, xml) {
-  if (LEADERBOARD_BUST_XML_CACHE.size >= LEADERBOARD_BUST_XML_CACHE_LIMIT) {
-    LEADERBOARD_BUST_XML_CACHE.clear()
-  }
-  LEADERBOARD_BUST_XML_CACHE.set(String(fairyId), xml)
-}
-
-async function warmLeaderboardEntries(entries, seen) {
-  let warmed = 0
-  for (const entry of entries) {
-    const id = Number(entry.avId)
-    if (!id || seen.has(id) || !entry.avName) {
-      continue
-    }
-    seen.add(id)
-    const fairy = fairyFromLeaderboardEntry(entry)
-    if (!profileAvatarSource(fairy, true)) {
-      fairy.avatar = MINIMAL_PROFILE_AVATAR
-    }
-    LEADERBOARD_SNAPSHOT_BY_ID.set(id, fairy)
-    cacheLeaderboardBustXml(id, buildLeaderboardBustProfileXml(fairy))
-    warmed++
-  }
-  return warmed
-}
-
-async function warmLeaderboardBustCacheForIds(fairyIds) {
-  try {
-    const want = new Set(
-      (fairyIds || [])
-        .map((id) => Number(id))
-        .filter((id) => Number.isFinite(id) && id > 0)
-    )
-    if (!want.size) {
-      return 0
-    }
-
-    const coll = db.db.collection('leaderboard_data')
-    const meta = await coll.findOne({ _id: 'meta' })
-    const weekId = meta?.currentWeeklyId
-    if (!weekId) {
-      return 0
-    }
-
-    const escapedWeek = String(weekId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const docs = await coll.find({
-      _id: { $regex: `^weekly:\\d+:${escapedWeek}$` }
-    }).toArray()
-
-    const seen = new Set()
-    let warmed = 0
-    for (const doc of docs) {
-      const matching = (doc.entries || []).filter((entry) =>
-        want.has(Number(entry.avId))
-      )
-      warmed += await warmLeaderboardEntries(matching, seen)
-    }
-
-    for (const fairyId of want) {
-      if (seen.has(fairyId)) {
-        continue
-      }
-      const fairy = await loadLeaderboardSnapshotFairy(fairyId)
-      if (!fairy) {
-        continue
-      }
-      if (!profileAvatarSource(fairy, true)) {
-        fairy.avatar = MINIMAL_PROFILE_AVATAR
-      }
-      cacheLeaderboardBustXml(fairyId, buildLeaderboardBustProfileXml(fairy))
-      warmed++
-    }
-
-    if (warmed > 0) {
-      console.log(
-        `[lbBust] targeted warm fairyIds=${[...want].join(',')} warmed=${warmed}`
-      )
-    }
-    return warmed
-  } catch (err) {
-    console.error('warmLeaderboardBustCacheForIds failed:', err.message)
-    return 0
-  }
-}
-
-async function warmLeaderboardBustCache(options = {}) {
-  const fairyIds = options.fairyIds
-  if (Array.isArray(fairyIds) && fairyIds.length > 0) {
-    return warmLeaderboardBustCacheForIds(fairyIds)
-  }
-
-  try {
-    const coll = db.db.collection('leaderboard_data')
-    const meta = await coll.findOne({ _id: 'meta' })
-    const weekId = meta?.currentWeeklyId
-    if (!weekId) {
-      return 0
-    }
-
-    const escapedWeek = String(weekId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const docs = await coll.find({
-      _id: { $regex: `^weekly:\\d+:${escapedWeek}$` }
-    }).toArray()
-
-    LEADERBOARD_SNAPSHOT_BY_ID.clear()
-    const seen = new Set()
-    let warmed = 0
-    for (const doc of docs) {
-      warmed += await warmLeaderboardEntries(doc.entries || [], seen)
-    }
-    if (warmed > 0) {
-      console.log(`Warmed ${warmed} leaderboard bust profile(s) for week ${weekId}`)
-    }
-    return warmed
-  } catch (err) {
-    console.error('warmLeaderboardBustCache failed:', err.message)
-    return 0
-  }
 }
 
 function isLeaderboardBustPullRequest(body, ses, includeAvatarExplicit, includeBio) {
@@ -310,6 +197,46 @@ function isLeaderboardBustPullRequest(body, ses, includeAvatarExplicit, includeB
     ses?.logged &&
     profileFairyIdFromBody > 0
   )
+}
+
+function appendEquippedItemsToAvatarEl(avatarEl, avatarForResponse) {
+  if (!avatarForResponse?.items) {
+    return 0
+  }
+
+  const equipped = []
+  for (const item of avatarForResponse.items) {
+    if (item.location !== 'Equipped') {
+      continue
+    }
+
+    const colors = []
+    if (typeof item.color1 === 'number' && item.color1 !== 0) {
+      colors.push({
+        '@number': 1,
+        '#': item.color1
+      })
+    }
+    if (typeof item.color2 === 'number' && item.color2 !== 0) {
+      colors.push({
+        '@number': 2,
+        '#': item.color2
+      })
+    }
+
+    equipped.push({
+      '@type': item.type,
+      '#': {
+        item_id: item.item_id,
+        ...(colors.length > 0 ? { color: colors } : {})
+      }
+    })
+  }
+
+  if (equipped.length > 0) {
+    avatarEl.inv_item = equipped
+  }
+  return equipped.length
 }
 
 function buildAvatarXmlEl(avatarForResponse, gender) {
@@ -355,7 +282,15 @@ function buildAvatarXmlEl(avatarForResponse, gender) {
   }
 
   avatarEl.gender = gender
+  appendEquippedItemsToAvatarEl(avatarEl, avatarForResponse)
   return avatarEl
+}
+
+function countEquippedItems(avatarForResponse) {
+  if (!avatarForResponse?.items) {
+    return 0
+  }
+  return avatarForResponse.items.filter((item) => item.location === 'Equipped').length
 }
 
 function buildLeaderboardBustProfileXml(fairy) {
@@ -392,7 +327,7 @@ function buildLeaderboardBustProfileXml(fairy) {
     fairyEl.avatar = buildAvatarXmlEl(avatarForResponse, fairy.gender)
   }
 
-  return createXML({
+  return createCompactXML({
     response: {
       success: true,
       status: 'logged_in_fairy',
@@ -402,13 +337,6 @@ function buildLeaderboardBustProfileXml(fairy) {
 }
 
 async function respondLeaderboardBustProfile(res, fairyId) {
-  const cacheKey = String(fairyId)
-  let xml = LEADERBOARD_BUST_XML_CACHE.get(cacheKey)
-  if (xml) {
-    console.log(`[lbBust] fairyId=${fairyId} cacheHit=true`)
-    return res.send(xml)
-  }
-
   let fairy = await loadLeaderboardSnapshotFairy(fairyId)
   let source = 'snapshot'
   if (!fairy) {
@@ -419,14 +347,14 @@ async function respondLeaderboardBustProfile(res, fairyId) {
     fairy = minimalLeaderboardBustFairy(fairyId)
     source = 'minimal'
   }
-  if (!profileAvatarSource(fairy, true)) {
-    fairy.avatar = MINIMAL_PROFILE_AVATAR
-    source += '+minimalAvatar'
-  }
+  ensureLeaderboardBustAvatar(fairy)
 
-  xml = buildLeaderboardBustProfileXml(fairy)
-  cacheLeaderboardBustXml(fairyId, xml)
-  console.log(`[lbBust] fairyId=${fairyId} cacheHit=false source=${source}`)
+  const avatarForResponse = profileAvatarSource(fairy, true)
+  const equippedCount = countEquippedItems(avatarForResponse)
+  const xml = buildLeaderboardBustProfileXml(fairy)
+  console.log(
+    `[lbBust] fairyId=${fairyId} source=${source} equippedCount=${equippedCount}`
+  )
   return res.send(xml)
 }
 
@@ -991,15 +919,6 @@ app.post('/fairies/api/GenerateTokenRequest', async (req, res) => {
 
 app.use(express.json())
 
-app.post('/fairies/api/internal/warmLeaderboardBustCache', async (req, res) => {
-  if (!verifyAuthorization(req.headers.authorization)) {
-    return res.status(401).send('Authorization failed.')
-  }
-  const fairyIds = Array.isArray(req.body?.fairyIds) ? req.body.fairyIds : null
-  const warmed = await warmLeaderboardBustCache({ fairyIds })
-  return res.status(200).send({ success: true, warmed })
-})
-
 app.post('/fairies/api/internal/setFairyData', async (req, res) => {
   if (!verifyAuthorization(req.headers.authorization)) {
     return res.status(401).send('Authorization failed.')
@@ -1478,85 +1397,7 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     const avatarForResponse = profileAvatarSource(fairy, includeAvatarExplicit)
 
     if (includeAvatar && avatarForResponse) {
-      const avatarEl = {}
-
-      const proportions = []
-      if (avatarForResponse.proportions) {
-        for (const [type, value] of Object.entries(avatarForResponse.proportions)) {
-          if (value != null) {
-            proportions.push({
-              '@type': type.toUpperCase(),
-              '#': value
-            })
-          }
-        }
-      }
-      if (proportions.length > 0) {
-        avatarEl.proportion = proportions
-      }
-
-      const rotations = []
-      if (avatarForResponse.rotations) {
-        for (const [type, value] of Object.entries(avatarForResponse.rotations)) {
-          if (value != null) {
-            rotations.push({
-              '@type': type.toUpperCase(),
-              '#': value
-            })
-          }
-        }
-      }
-      if (rotations.length > 0) {
-        avatarEl.rotation = rotations
-      }
-
-      const simpleFields = [
-        'hair_back', 'hair_front', 'face', 'eye', 'wing',
-        'hair_color', 'hair_color2', 'eye_color', 'skin_color', 'wing_color'
-      ]
-      for (const field of simpleFields) {
-        if (avatarForResponse[field] != null) {
-          avatarEl[field] = avatarForResponse[field]
-        }
-      }
-
-      avatarEl.gender = fairy.gender
-
-      if (avatarForResponse.items) {
-        avatarEl.inv_item = []
-
-        for (const item of avatarForResponse.items) {
-          if (item.location !== "Equipped") {
-            continue;
-          }
-
-          const colors = []
-
-          if (typeof item.color1 === 'number' && item.color1 !== 0) {
-            colors.push({
-              '@number': 1,
-              '#': item.color1
-            })
-          }
-
-          if (typeof item.color2 === 'number' && item.color2 !== 0) {
-            colors.push({
-              '@number': 2,
-              '#': item.color2
-            })
-          }
-
-          avatarEl.inv_item.push({
-            '@type': item.type,
-            '#': {
-              item_id: item.item_id,
-              color: colors
-            }
-          })
-        }
-      }
-
-      fairyEl.avatar = avatarEl
+      fairyEl.avatar = buildAvatarXmlEl(avatarForResponse, fairy.gender)
     }
 
     responseData.fairies.push({ fairy: fairyEl })
@@ -1930,10 +1771,3 @@ async function handleFavoriteBadgeRequest (req, res) {
 app.post('/fairies/api/UpdateFavoriteBadgeRequest', (req, res) => {
   return handleFavoriteBadgeRequest(req, res)
 })
-
-setTimeout(() => {
-  warmLeaderboardBustCache()
-}, 3000)
-setInterval(() => {
-  warmLeaderboardBustCache()
-}, 5 * 60 * 1000)
