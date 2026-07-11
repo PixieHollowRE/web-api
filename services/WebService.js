@@ -154,8 +154,8 @@ async function handleWhoAmIRequest (req, res) {
       },
       userTestAccessAllowed: false,
       'server-time': {
-        day: new Date().toLocaleDateString('en-ZA'),
-        time: new Date().toLocaleTimeString('en-ZA')
+        day: new Date().toLocaleDateString('en-ZA', { timeZone: 'America/Los_Angeles' }),
+        time: new Date().toLocaleTimeString('en-ZA', { timeZone: 'America/Los_Angeles' })
       },
       fairy_id: ses.fairyId
     }

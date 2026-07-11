@@ -20,8 +20,11 @@ const Fairy = new mongoose.model('Fairy', {
   tutorialBitmask: { type: Array, default: [0, 0] },
   optionsBitmask: { type: Number, default: 0 },
   gold: { type: Number, default: 0 },
+  goldTradedToday: { type: Number, default: 0 },
+  goldTradedDate: { type: Date, default: null }, 
   pouch: { type: Array },
   level: { type: Number, default: 0 },
+  dailyChanceLastSpin: { type: Date, default: null },
   avatar: {
     proportions: {
       head: Number,
