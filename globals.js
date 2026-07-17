@@ -11,6 +11,11 @@ global.db = new Database()
 
 /* global Database: writeable */
 
+MessageDirector = require('./services/MessageDirector')
+global.md = new MessageDirector()
+
+/* global MessageDirector: writeable */
+
 _create = require('xmlbuilder2')
 global.create = _create.create
 

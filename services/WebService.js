@@ -1,23 +1,10 @@
 /* global app:writable */
 /* global db:writeable */
+/* global md:writeable */
 
 app = global.app
 
 const createXML = require('../utils/xml')
-const {
-  parseFavoriteBadgeFromMoreOptions,
-  persistFavoriteBadge,
-  extractFairyIdFromBody,
-  resolveFavoriteFromRequest,
-  repairMoreOptions,
-  setFavoriteInMoreOptions,
-  resolveFavoriteBadge,
-  resolveFavoriteBadgeFromValues
-} = require('../utils/moreOptions')
-const {
-  shouldAckMemberDays,
-  NON_MEMBER_DAYS
-} = require('../utils/loyalty')
 
 const express = require('express')
 
@@ -27,504 +14,6 @@ const fs = require('fs')
 const { XMLParser } = require('fast-xml-parser')
 
 const loginQueue = []
-
-const PACIFIC_TIME_ZONE = 'America/Los_Angeles'
-
-function getPacificServerTime () {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: PACIFIC_TIME_ZONE,
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: false
-    }).formatToParts(new Date()).map(({ type, value }) => [type, value])
-  )
-  const hour = Number(parts.hour) % 24
-  const minute = Number(parts.minute)
-  return {
-    day: `${parts.year}/${parts.month}/${parts.day}`,
-    time: `${hour}:${String(minute).padStart(2, '0')}`
-  }
-}
-
-// Coliseum leaderboard panel requests dna=1 and queues AvatarBustBitmapRequest per row.
-// Fairies without avatar DNA leave the panel stuck on the loading hourglass.
-const MINIMAL_PROFILE_AVATAR = {
-  proportions: { head: 95, height: 100, body: 90 },
-  rotations: {
-    head_rot: 15,
-    ll_arm_rot: -11,
-    ul_arm_rot: -55,
-    ul_leg_rot: -4,
-    ll_leg_rot: 9,
-    lr_arm_rot: -14,
-    ur_arm_rot: 57,
-    lr_leg_rot: 15,
-    ur_leg_rot: 0
-  },
-  hair_back: 5555,
-  hair_front: 5044,
-  face: 4539,
-  eye: 4039,
-  wing: 6003,
-  hair_color: 76,
-  eye_color: 71,
-  skin_color: 103,
-  wing_color: 109,
-  hair_color2: 0,
-  items: []
-}
-
-function profileAvatarSource(fairy, includeAvatarExplicit) {
-  if (fairy.avatar) {
-    return fairy.avatar
-  }
-  if (includeAvatarExplicit) {
-    return MINIMAL_PROFILE_AVATAR
-  }
-  return null
-}
-
-function profileCreatedDate(fairy) {
-  if (fairy.created && typeof fairy.created.toISOString === 'function') {
-    return fairy.created.toISOString().split('T')[0]
-  }
-  return new Date().toISOString().split('T')[0]
-}
-
-function profileTutorialBitmask(fairy) {
-  const bits = Array.isArray(fairy.tutorialBitmask) ? fairy.tutorialBitmask : [0, 0]
-  return [Number(bits[0] || 0), Number(bits[1] || 0)]
-}
-
-function isSyntheticLeaderboardOwner(ownerUsername) {
-  return typeof ownerUsername === 'string' && ownerUsername.startsWith('__leaderboard_')
-}
-
-const LEADERBOARD_BUST_XML_CACHE = new Map()
-const LEADERBOARD_BUST_XML_CACHE_LIMIT = 512
-const LEADERBOARD_SNAPSHOT_BY_ID = new Map()
-
-function minimalLeaderboardBustFairy(fairyId) {
-  return {
-    _id: Number(fairyId),
-    name: 'Fairy',
-    address: '',
-    gender: 2,
-    talent: 1,
-    avatar: MINIMAL_PROFILE_AVATAR,
-    tutorialBitmask: [0, 0],
-    moreOptions: 'AAAAAAAAAAAAAAAAAAAAAAAA',
-    accountId: 0,
-    chosen: true,
-    icon: 164,
-    game_prof_bg: '50',
-    optionsBitmask: 0,
-    level: 1
-  }
-}
-
-function fairyFromLeaderboardEntry(entry) {
-  const profile = entry.displayProfile || {}
-  return {
-    _id: entry.avId,
-    name: entry.avName || '',
-    address: `${entry.addrNum || 0}${entry.addrStr || ''}`,
-    gender: profile.gender ?? 2,
-    talent: profile.talent ?? 1,
-    avatar: profile.avatar || null,
-    tutorialBitmask: [0, 0],
-    moreOptions: 'AAAAAAAAAAAAAAAAAAAAAAAA',
-    accountId: 0,
-    chosen: true,
-    icon: 164,
-    game_prof_bg: '50',
-    optionsBitmask: 0,
-    level: 1
-  }
-}
-
-async function loadLeaderboardSnapshotFairy(fairyId) {
-  const idNum = Number(fairyId)
-  if (!Number.isFinite(idNum) || idNum <= 0) {
-    return null
-  }
-
-  const cached = LEADERBOARD_SNAPSHOT_BY_ID.get(idNum)
-  if (cached) {
-    return cached
-  }
-
-  const coll = db.db.collection('leaderboard_data')
-  const meta = await coll.findOne({ _id: 'meta' })
-  const weekId = meta?.currentWeeklyId
-  if (!weekId) {
-    return null
-  }
-
-  const escapedWeek = String(weekId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const docs = await coll.find({
-    _id: { $regex: `^weekly:\\d+:${escapedWeek}$` }
-  }).toArray()
-
-  for (const doc of docs) {
-    for (const entry of doc.entries || []) {
-      if (Number(entry.avId) === idNum) {
-        const fairy = fairyFromLeaderboardEntry(entry)
-        LEADERBOARD_SNAPSHOT_BY_ID.set(idNum, fairy)
-        return fairy
-      }
-    }
-  }
-  return null
-}
-
-function cacheLeaderboardBustXml(fairyId, xml) {
-  if (LEADERBOARD_BUST_XML_CACHE.size >= LEADERBOARD_BUST_XML_CACHE_LIMIT) {
-    LEADERBOARD_BUST_XML_CACHE.clear()
-  }
-  LEADERBOARD_BUST_XML_CACHE.set(String(fairyId), xml)
-}
-
-async function warmLeaderboardEntries(entries, seen) {
-  let warmed = 0
-  for (const entry of entries) {
-    const id = Number(entry.avId)
-    if (!id || seen.has(id) || !entry.avName) {
-      continue
-    }
-    seen.add(id)
-    const fairy = fairyFromLeaderboardEntry(entry)
-    if (!profileAvatarSource(fairy, true)) {
-      fairy.avatar = MINIMAL_PROFILE_AVATAR
-    }
-    LEADERBOARD_SNAPSHOT_BY_ID.set(id, fairy)
-    cacheLeaderboardBustXml(id, buildLeaderboardBustProfileXml(fairy))
-    warmed++
-  }
-  return warmed
-}
-
-async function warmLeaderboardBustCacheForIds(fairyIds) {
-  try {
-    const want = new Set(
-      (fairyIds || [])
-        .map((id) => Number(id))
-        .filter((id) => Number.isFinite(id) && id > 0)
-    )
-    if (!want.size) {
-      return 0
-    }
-
-    const coll = db.db.collection('leaderboard_data')
-    const meta = await coll.findOne({ _id: 'meta' })
-    const weekId = meta?.currentWeeklyId
-    if (!weekId) {
-      return 0
-    }
-
-    const escapedWeek = String(weekId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const docs = await coll.find({
-      _id: { $regex: `^weekly:\\d+:${escapedWeek}$` }
-    }).toArray()
-
-    const seen = new Set()
-    let warmed = 0
-    for (const doc of docs) {
-      const matching = (doc.entries || []).filter((entry) =>
-        want.has(Number(entry.avId))
-      )
-      warmed += await warmLeaderboardEntries(matching, seen)
-    }
-
-    for (const fairyId of want) {
-      if (seen.has(fairyId)) {
-        continue
-      }
-      const fairy = await loadLeaderboardSnapshotFairy(fairyId)
-      if (!fairy) {
-        continue
-      }
-      if (!profileAvatarSource(fairy, true)) {
-        fairy.avatar = MINIMAL_PROFILE_AVATAR
-      }
-      cacheLeaderboardBustXml(fairyId, buildLeaderboardBustProfileXml(fairy))
-      warmed++
-    }
-
-    if (warmed > 0) {
-      console.log(
-        `[lbBust] targeted warm fairyIds=${[...want].join(',')} warmed=${warmed}`
-      )
-    }
-    return warmed
-  } catch (err) {
-    console.error('warmLeaderboardBustCacheForIds failed:', err.message)
-    return 0
-  }
-}
-
-async function warmLeaderboardBustCache(options = {}) {
-  const fairyIds = options.fairyIds
-  if (Array.isArray(fairyIds) && fairyIds.length > 0) {
-    return warmLeaderboardBustCacheForIds(fairyIds)
-  }
-
-  try {
-    const coll = db.db.collection('leaderboard_data')
-    const meta = await coll.findOne({ _id: 'meta' })
-    const weekId = meta?.currentWeeklyId
-    if (!weekId) {
-      return 0
-    }
-
-    const escapedWeek = String(weekId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const docs = await coll.find({
-      _id: { $regex: `^weekly:\\d+:${escapedWeek}$` }
-    }).toArray()
-
-    LEADERBOARD_SNAPSHOT_BY_ID.clear()
-    const seen = new Set()
-    let warmed = 0
-    for (const doc of docs) {
-      warmed += await warmLeaderboardEntries(doc.entries || [], seen)
-    }
-    if (warmed > 0) {
-      console.log(`Warmed ${warmed} leaderboard bust profile(s) for week ${weekId}`)
-    }
-    return warmed
-  } catch (err) {
-    console.error('warmLeaderboardBustCache failed:', err.message)
-    return 0
-  }
-}
-
-function isLeaderboardBustPullRequest(body, ses, includeAvatarExplicit, includeBio) {
-  const profileFairyIdFromBody = extractFairyIdFromBody(body)
-  return Boolean(
-    includeAvatarExplicit &&
-    !includeBio &&
-    ses?.logged &&
-    profileFairyIdFromBody > 0
-  )
-}
-
-function buildAvatarXmlEl(avatarForResponse, gender) {
-  const avatarEl = {}
-
-  const proportions = []
-  if (avatarForResponse.proportions) {
-    for (const [type, value] of Object.entries(avatarForResponse.proportions)) {
-      if (value != null) {
-        proportions.push({
-          '@type': type.toUpperCase(),
-          '#': value
-        })
-      }
-    }
-  }
-  if (proportions.length > 0) {
-    avatarEl.proportion = proportions
-  }
-
-  const rotations = []
-  if (avatarForResponse.rotations) {
-    for (const [type, value] of Object.entries(avatarForResponse.rotations)) {
-      if (value != null) {
-        rotations.push({
-          '@type': type.toUpperCase(),
-          '#': value
-        })
-      }
-    }
-  }
-  if (rotations.length > 0) {
-    avatarEl.rotation = rotations
-  }
-
-  for (const field of [
-    'hair_back', 'hair_front', 'face', 'eye', 'wing',
-    'hair_color', 'hair_color2', 'eye_color', 'skin_color', 'wing_color'
-  ]) {
-    if (avatarForResponse[field] != null) {
-      avatarEl[field] = avatarForResponse[field]
-    }
-  }
-
-  avatarEl.gender = gender
-  return avatarEl
-}
-
-function buildLeaderboardBustProfileXml(fairy) {
-  const avatarForResponse = profileAvatarSource(fairy, true)
-  const [tutorialLo, tutorialHi] = profileTutorialBitmask(fairy)
-  const fairyEl = {
-    '@fairy_id': fairy._id,
-    '#': {
-      address: fairy.address || '',
-      more_options: fairy.moreOptions || 'AAAAAAAAAAAAAAAAAAAAAAAA',
-      badge_count: 0,
-      total_badges: 0,
-      newest_badge: 0,
-      recent_badge: 0,
-      fav_badge: 0,
-      favorite_badge: 0,
-      tutorial: tutorialLo,
-      tutorial_hi: tutorialHi,
-      created: profileCreatedDate(fairy),
-      name: fairy.name,
-      talent: fairy.talent,
-      gender: fairy.gender,
-      chosen: fairy.chosen,
-      icon: fairy.icon,
-      game_prof_bg: fairy.game_prof_bg,
-      options_mask: fairy.optionsBitmask,
-      level: fairy.level,
-      member_days: NON_MEMBER_DAYS,
-      user_id: fairy.accountId
-    }
-  }
-
-  if (avatarForResponse) {
-    fairyEl.avatar = buildAvatarXmlEl(avatarForResponse, fairy.gender)
-  }
-
-  return createXML({
-    response: {
-      success: true,
-      status: 'logged_in_fairy',
-      fairies: [{ fairy: fairyEl }]
-    }
-  })
-}
-
-async function respondLeaderboardBustProfile(res, fairyId) {
-  const cacheKey = String(fairyId)
-  let xml = LEADERBOARD_BUST_XML_CACHE.get(cacheKey)
-  if (xml) {
-    console.log(`[lbBust] fairyId=${fairyId} cacheHit=true`)
-    return res.send(xml)
-  }
-
-  let fairy = await loadLeaderboardSnapshotFairy(fairyId)
-  let source = 'snapshot'
-  if (!fairy) {
-    fairy = await db.retrieveFairy(fairyId)
-    source = fairy ? 'mongo' : 'missing'
-  }
-  if (!fairy) {
-    fairy = minimalLeaderboardBustFairy(fairyId)
-    source = 'minimal'
-  }
-  if (!profileAvatarSource(fairy, true)) {
-    fairy.avatar = MINIMAL_PROFILE_AVATAR
-    source += '+minimalAvatar'
-  }
-
-  xml = buildLeaderboardBustProfileXml(fairy)
-  cacheLeaderboardBustXml(fairyId, xml)
-  console.log(`[lbBust] fairyId=${fairyId} cacheHit=false source=${source}`)
-  return res.send(xml)
-}
-
-function dedupeFriendsPreserveOrder(friends) {
-  if (!Array.isArray(friends)) {
-    return friends
-  }
-
-  const seen = new Set()
-  const normalized = []
-
-  for (const raw of friends) {
-    const id = Number(raw)
-    if (!Number.isFinite(id) || id <= 0) {
-      continue
-    }
-    if (seen.has(id)) {
-      continue
-    }
-    seen.add(id)
-    normalized.push(id)
-  }
-
-  return normalized
-}
-
-async function sanitizeFriendsForWrite(friends, fairy) {
-  if (!Array.isArray(friends)) {
-    return friends
-  }
-
-  const playToken = fairy.ownerAccount
-  const fairyId = Number(fairy._id)
-  const accountId = Number(fairy.accountId || 0)
-  let normalized = dedupeFriendsPreserveOrder(friends)
-
-  if (normalized.length !== friends.length) {
-    console.warn(
-      `setFairyData: deduped friends[] for playToken=${playToken} (${friends.length} -> ${normalized.length})`
-    )
-  }
-
-  normalized = normalized.filter((id) => {
-    if (id === fairyId) {
-      console.warn(
-        `setFairyData: removed fairy _id=${fairyId} from friends[] for playToken=${playToken} (expected accountId)`
-      )
-      return false
-    }
-    if (accountId && id === accountId) {
-      return false
-    }
-    return true
-  })
-
-  if (!normalized.length) {
-    return normalized
-  }
-
-  const Fairy = require('../db/models/Fairy')
-  const avatarDocs = await Fairy.find(
-    { _id: { $in: normalized } },
-    { _id: 1, accountId: 1 }
-  ).lean()
-
-  if (!avatarDocs.length) {
-    return normalized
-  }
-
-  const avatarIdToAccountId = new Map(
-    avatarDocs
-      .filter((doc) => Number(doc.accountId) > 0 && Number(doc._id) !== Number(doc.accountId))
-      .map((doc) => [Number(doc._id), Number(doc.accountId)])
-  )
-
-  if (!avatarIdToAccountId.size) {
-    return normalized
-  }
-
-  const remapped = []
-  const seen = new Set()
-  for (const id of normalized) {
-    let resolved = id
-    if (avatarIdToAccountId.has(id)) {
-      resolved = avatarIdToAccountId.get(id)
-      console.warn(
-        `setFairyData: friends[] contained avatar _id=${id} for playToken=${playToken}; remapped to accountId=${resolved}`
-      )
-    }
-    if (seen.has(resolved)) {
-      continue
-    }
-    seen.add(resolved)
-    remapped.push(resolved)
-  }
-
-  return remapped
-}
 
 app.get('/', (req, res) => {
   res.send('Pixie Hollow API service.')
@@ -551,15 +40,6 @@ function parseFairyNames () {
 }
 
 const fairyNames = parseFairyNames()
-
-function parseMinigameIds () {
-  const xml = fs.readFileSync('assets/minigames.xml', 'utf-8')
-  const withoutComments = xml.replace(/<!--[\s\S]*?-->/g, '')
-  const ids = [...withoutComments.matchAll(/id="(\d+)"/g)].map((match) => match[1])
-  return [...new Set(ids)]
-}
-
-const minigameIds = parseMinigameIds()
 
 function validateFairyName (name) {
   const nameParts = name.trim().split(/\s+/)
@@ -589,173 +69,6 @@ function validateFairyName (name) {
 
 function verifyAuthorization (token) {
   return token === process.env.API_TOKEN
-}
-
-function buildGameStatEntries (gameStats) {
-  let statsById = gameStats
-  if (!statsById || typeof statsById !== 'object') {
-    statsById = {}
-  } else if (typeof statsById.toObject === 'function') {
-    statsById = statsById.toObject()
-  }
-
-  const entries = []
-
-  for (const gameId of minigameIds) {
-    const entry = statsById[gameId] || statsById[String(gameId)] || {}
-    const timesPlayed = Number(entry?.timesPlayed || 0)
-    const bestScore = Number(entry?.bestScore || 0)
-
-    if (timesPlayed <= 0 && bestScore <= 0) {
-      continue
-    }
-
-    entries.push({
-      '#': {
-        stat_id: gameId,
-        count: timesPlayed,
-        best: bestScore,
-        total: timesPlayed,
-        bonus: 0,
-        won: 0
-      }
-    })
-  }
-
-  return entries
-}
-
-function buildBadgeInvEntries (earnedBadges) {
-  if (!Array.isArray(earnedBadges)) {
-    return []
-  }
-
-  return earnedBadges
-    .filter((entry) => entry && entry.badgeId != null)
-    .map((entry, index) => ({
-      item_id: Number(entry.badgeId),
-      inv_id: Number(entry.badgeId),
-      slot: index
-    }))
-}
-
-function resolveBadgeCount (fairy, earnedBadges) {
-  const earnedCount = earnedBadges.length
-  const storedCount = Number(fairy.badgeCount || 0)
-  return Math.max(storedCount, earnedCount)
-}
-
-function resolveRequestField (body, fieldName) {
-  const roots = [
-    body,
-    body?.fairiesprofilerequest,
-    body?.FairiesProfileRequest,
-    body?.fairiesinventoryrequest,
-    body?.FairiesInventoryRequest
-  ].filter(Boolean)
-
-  for (const root of roots) {
-    const value = unwrapXmlField(root[fieldName])
-    if (value) {
-      return value
-    }
-  }
-
-  return unwrapXmlField(body?.[fieldName])
-}
-
-function unwrapXmlField (value) {
-  if (value === undefined || value === null) {
-    return ''
-  }
-  if (typeof value === 'object' && value._ !== undefined) {
-    return unwrapXmlField(value._)
-  }
-  const raw = Array.isArray(value) ? value[0] : value
-  if (typeof raw === 'object' && raw !== null) {
-    if (raw._ !== undefined) {
-      return unwrapXmlField(raw._)
-    }
-    return ''
-  }
-  return String(raw)
-}
-
-function resolveInventoryRequestType (body) {
-  const roots = [
-    body,
-    body?.fairiesinventoryrequest,
-    body?.FairiesInventoryRequest
-  ].filter(Boolean)
-
-  for (const root of roots) {
-    const type = unwrapXmlField(root.type)
-    if (type) {
-      return type.toLowerCase()
-    }
-  }
-
-  return 'wardrobe'
-}
-
-async function resolveInventoryFairyId (body, ses) {
-  let fairyId = extractFairyIdFromBody(body)
-
-  if (fairyId <= 0) {
-    fairyId = Number(ses?.fairyId || 0)
-  }
-
-  if (fairyId <= 0 && ses?.username) {
-    const fairy = await db.retrieveFairyByOwnerAccount(ses.username)
-    if (fairy) {
-      fairyId = fairy._id
-    }
-  }
-
-  if (fairyId <= 0 && ses?.userId) {
-    const fairy = await db.retrieveFairyByAccountId(ses.userId)
-    if (fairy) {
-      fairyId = fairy._id
-    }
-  }
-
-  return fairyId > 0 ? fairyId : null
-}
-
-async function resolveProfileFairyId (body, ses, options = {}) {
-  const touchSession = options.touchSession !== false
-  let fairyId = extractFairyIdFromBody(body)
-
-  const userIdRaw = resolveRequestField(body, 'user_id')
-  const userId = userIdRaw ? parseInt(userIdRaw, 10) : null
-  if (userId !== null && Number.isFinite(userId)) {
-    const account = await db.retrieveAccountFromIdentifier(userId)
-    if (account?.playerId) {
-      fairyId = account.playerId
-    }
-  }
-
-  const current = resolveRequestField(body, 'current')
-  if (current === '1') {
-    if (touchSession) {
-      ses.viewProfileFairyId = null
-    }
-    return Number(ses?.fairyId || 0) || null
-  }
-
-  if (fairyId > 0) {
-    if (touchSession) {
-      const ownFairyId = Number(ses?.fairyId || 0)
-      if (ownFairyId > 0 && Number(fairyId) !== ownFairyId) {
-        ses.viewProfileFairyId = fairyId
-      } else {
-        ses.viewProfileFairyId = null
-      }
-    }
-    return fairyId
-  }
-
-  return Number(ses?.fairyId || 0) || null
 }
 
 function generateRandomNumber () {
@@ -805,7 +118,6 @@ async function handleWhoAmIRequest (req, res) {
   let accountId = -1
   let userName = ''
   let speedChatPrompt = 'false'
-  let memberDays = NON_MEMBER_DAYS
 
   if (ses.success || req.query.isFirst === undefined) {
     success = true
@@ -817,9 +129,8 @@ async function handleWhoAmIRequest (req, res) {
     accountId = ses.userId
     userName = ses.username
 
-    const membership = await db.resolveMembershipContext(userName, ses)
-    memberDays = membership.memberDays
-    speedChatPrompt = `${Boolean(!membership.accData.SpeedChatPlus)}`
+    const accData = await db.retrieveAccountData(userName)
+    speedChatPrompt = `${Boolean(!accData.SpeedChatPlus)}`
   }
 
   res.setHeader('content-type', 'text/xml')
@@ -828,7 +139,6 @@ async function handleWhoAmIRequest (req, res) {
       success: success,
       status: status,
       username: userName,
-      member_days: memberDays,
       account: {
         '@account_id': accountId,
         '#': {
@@ -840,12 +150,14 @@ async function handleWhoAmIRequest (req, res) {
           touAccepted: true,
           speed_chat_prompt: speedChatPrompt,
           dname_submitted: true,
-          dname_approved: true,
-          member_days: memberDays
+          dname_approved: true
         }
       },
       userTestAccessAllowed: false,
-      'server-time': getPacificServerTime(),
+      'server-time': {
+        day: new Date().toLocaleDateString('en-ZA', { timeZone: 'America/Los_Angeles' }),
+        time: new Date().toLocaleTimeString('en-ZA', { timeZone: 'America/Los_Angeles' })
+      },
       fairy_id: ses.fairyId
     }
   }))
@@ -991,15 +303,6 @@ app.post('/fairies/api/GenerateTokenRequest', async (req, res) => {
 
 app.use(express.json())
 
-app.post('/fairies/api/internal/warmLeaderboardBustCache', async (req, res) => {
-  if (!verifyAuthorization(req.headers.authorization)) {
-    return res.status(401).send('Authorization failed.')
-  }
-  const fairyIds = Array.isArray(req.body?.fairyIds) ? req.body.fairyIds : null
-  const warmed = await warmLeaderboardBustCache({ fairyIds })
-  return res.status(200).send({ success: true, warmed })
-})
-
 app.post('/fairies/api/internal/setFairyData', async (req, res) => {
   if (!verifyAuthorization(req.headers.authorization)) {
     return res.status(401).send('Authorization failed.')
@@ -1009,16 +312,7 @@ app.post('/fairies/api/internal/setFairyData', async (req, res) => {
 
   if (data.playToken && data.fieldData) {
     const fairy = await db.retrieveFairyByOwnerAccount(data.playToken)
-    if (!fairy) {
-      console.log(`setFairyData: no fairy for playToken=${data.playToken}`)
-      return res.status(404).send({ success: false, message: 'Fairy not found.' })
-    }
-    console.log(
-      `setFairyData: playToken=${data.playToken} fairyId=${fairy._id} fields=${JSON.stringify(Object.keys(data.fieldData))}`
-    )
-    if (Object.prototype.hasOwnProperty.call(data.fieldData, 'friends')) {
-      data.fieldData.friends = await sanitizeFriendsForWrite(data.fieldData.friends, fairy)
-    }
+    console.log(fairy, data.fieldData)
     Object.assign(fairy, data.fieldData)
     await fairy.save()
     return res.status(200).send({ success: true, message: 'Success.' })
@@ -1054,19 +348,17 @@ app.get('/fairies/api/internal/retrieveFairy', async (req, res) => {
 
   res.setHeader('content-type', 'application/json')
   if (req.query.identifier) {
-    const fairy = await db.retrieveFairy(req.query.identifier)
-    if (!fairy) {
-      return res.status(404).send({ message: `Fairy ${req.query.identifier} not found` })
-    }
-    return res.end(JSON.stringify(fairy.toObject()))
+    res.end(JSON.stringify(
+      await db.retrieveFairy(req.query.identifier))
+    )
+    return
   }
 
   if (req.query.playToken) {
-    const fairy = await db.retrieveFairyByOwnerAccount(req.query.playToken)
-    if (!fairy) {
-      return res.status(404).send({ message: `Fairy for account ${req.query.playToken} not found` })
-    }
-    return res.end(JSON.stringify(fairy.toObject()))
+    res.end(JSON.stringify(
+      await db.retrieveFairyByOwnerAccount(req.query.playToken))
+    )
+    return
   }
 
   return res.status(400).send({})
@@ -1114,6 +406,34 @@ app.get('/fairies/api/internal/retrieveObject/:identifier', async (req, res) => 
   }
 })
 
+// The Flash-facing routes read bio as { id, answer } records, but the cluster
+// can hand it back to us in other shapes: setBio is a `db` field, so any update
+// that goes through the state server write-throughs to APIDatabase.lua, whose
+// Lua unpacker reads BioAnswer struct members positionally (see how it takes
+// setFairyDNA apart as value[1], value[2]...). Pin the shape here so a
+// round-trip can't quietly rewrite bio into something the profile can't read.
+function normaliseBio (value) {
+  if (!Array.isArray(value)) {
+    return value
+  }
+
+  return value.map((answer, i) => {
+    if (Array.isArray(answer)) {
+      // BioAnswer { int16 questionId; int16 answerId; }
+      return { id: answer[0], answer: answer[1] }
+    }
+
+    if (answer && typeof answer === 'object') {
+      return {
+        id: answer.id ?? answer.questionId ?? i + 1,
+        answer: answer.answer ?? answer.answerId ?? 0
+      }
+    }
+
+    return answer
+  })
+}
+
 app.post('/fairies/api/internal/updateObject/:identifier', async (req, res) => {
   if (!verifyAuthorization(req.headers.authorization)) {
     return res.status(401).send('Authorization failed.')
@@ -1132,17 +452,7 @@ app.post('/fairies/api/internal/updateObject/:identifier', async (req, res) => {
     }
 
     if (!updated) {
-      const fairyId = Number(req.params.identifier)
-      let fairy = null
-      if (Number.isFinite(fairyId) && fairyId > 0) {
-        fairy = await db.retrieveFairyById(fairyId)
-      }
-      if (!fairy) {
-        fairy = await db.retrieveFairy(req.params.identifier)
-      }
-      if (fairy && Number(fairy._id) !== fairyId && Number.isFinite(fairyId) && fairyId > 0) {
-        fairy = null
-      }
+      const fairy = await db.retrieveFairy(req.params.identifier)
       if (fairy) {
         const fairyDNAFieldMap = {
           talent: 'talent',
@@ -1171,38 +481,14 @@ app.post('/fairies/api/internal/updateObject/:identifier', async (req, res) => {
           lr_leg_rot: 'avatar.rotations.lr_leg_rot'
         }
 
-        if (Array.isArray(data.equippedSlots) && data.equippedSlots.length > 0) {
-          db.applyEquippedSlotUpdates(fairy, data.equippedSlots)
-        }
-
         for (const [key, value] of Object.entries(data)) {
-          if (key === 'equippedSlots') {
-            continue
-          }
           if (fairyDNAFieldMap[key]) {
             fairy.set(fairyDNAFieldMap[key], value)
+          } else if (key === 'bio') {
+            fairy.bio = normaliseBio(value)
           } else {
             fairy[key] = value
           }
-        }
-
-        if (typeof data.moreOptions === 'string') {
-          const earnedBadges = Array.isArray(fairy.earnedBadges) ? fairy.earnedBadges : []
-          const earnedBadgeIds = new Set(
-            earnedBadges.map((entry) => Number(entry.badgeId))
-          )
-          const repaired = repairMoreOptions(
-            data.moreOptions,
-            Number(fairy.favoriteBadgeId || 0),
-            earnedBadgeIds
-          )
-          fairy.moreOptions = repaired
-          fairy.favoriteBadgeId = parseFavoriteBadgeFromMoreOptions(repaired)
-        }
-
-        const directFavoriteBadgeId = Number(data.favoriteBadgeId || 0)
-        if (directFavoriteBadgeId > 0) {
-          await persistFavoriteBadge(fairy, directFavoriteBadgeId)
         }
 
         await fairy.save()
@@ -1322,119 +608,86 @@ app.post('/fairies/api/SubmitDNameRequest', (req, res) => {
 })
 
 app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
+  // NOTE: Sunrise only supports one Fairy or Sparrow Man character per account.
+  // Sunrise is aiming for accuracy as close as possible, even if the client may allow it still.
+
+  // Prior to November 10, 2011, you could create up to three fairies or sparrow men.
+  // After that date, you could only create one fairy per Disney account.
   const ses = req.session
 
-  try {
-    const loggedInFairy = false
-    const includeAvatarExplicit = 'dna' in req.body
-    const includeBio = 'bio' in req.body
-    const profileFairyIdFromBody = extractFairyIdFromBody(req.body)
-    const isLeaderboardBustPull = isLeaderboardBustPullRequest(
-      req.body,
-      ses,
-      includeAvatarExplicit,
-      includeBio
-    )
+  const loggedInFairy = false
+  const includeAvatar = 'dna' in req.body
+  const includeBio = 'bio' in req.body
 
-    if (!ses.logged) {
-      return res.send(createXML({
-        response: {
-          success: false,
-          status: 'not_logged_in'
-        }
-      }))
-    }
+  let fairyId = req.body.fairy_id ?? null
+  const userId = req.body.user_id ?? null
 
-    if (isLeaderboardBustPull) {
-      console.log(`[lbBust] request fairyId=${profileFairyIdFromBody}`)
-      return await respondLeaderboardBustProfile(res, profileFairyIdFromBody)
-    }
+  if (fairyId !== null) {
+    fairyId = parseInt(fairyId)
+  } else {
+    fairyId = ses?.fairyId ?? null
+  }
 
-    const fairyId = await resolveProfileFairyId(req.body, ses, {
-      touchSession: !isLeaderboardBustPull
-    })
-    const sessionOwnFairy = ses.logged ? await db.resolveWritableSessionFairy(req) : null
-    const sessionOwnFairyId = sessionOwnFairy ? Number(sessionOwnFairy._id) : 0
+  if (userId !== null) {
+    // Grab the fairyId from the account instead.
+    const account = await db.retrieveAccountFromIdentifier(userId)
+    fairyId = account.playerId
+  }
 
-    const fairyData = await db.retrieveFairy(fairyId)
-    const fairiesToSend = fairyData ? [fairyData] : []
+  const fairyData = await db.retrieveFairy(fairyId)
+  const fairiesToSend = fairyData ? [fairyData] : []
 
-    const responseData = {
-      success: true,
-      status: fairyId != null ? 'logged_in_fairy' : 'logged_in',
-      fairies: []
-    }
+  const success = ses.logged ? true : false
+  const status = !success ? 'not_logged_in' : (fairyId != null ? 'logged_in_fairy' : 'logged_in')
 
-    for (const fairy of fairiesToSend) {
-    const earnedBadges = Array.isArray(fairy.earnedBadges) ? fairy.earnedBadges : []
-    const badgeCount = resolveBadgeCount(fairy, earnedBadges)
-    const newestBadge = typeof fairy.newestBadge === 'number' && fairy.newestBadge > 0
-      ? fairy.newestBadge
-      : (earnedBadges.length ? Number(earnedBadges[earnedBadges.length - 1].badgeId) : 0)
-    const earnedBadgeIds = new Set(
-      earnedBadges.map((entry) => Number(entry.badgeId))
-    )
-    const previousFavoriteId = Number(fairy.favoriteBadgeId || 0)
-    let favoriteBadgeData = resolveFavoriteBadge(fairy)
-    let profileWritePatch = null
-    const isOwnFairy = sessionOwnFairyId > 0 && Number(fairy._id) === sessionOwnFairyId
+  const responseData = {
+    success,
+    status
+  }
 
-    const wouldClearValidFavorite =
-      favoriteBadgeData.favoriteBadgeId <= 0 &&
-      previousFavoriteId > 0 &&
-      earnedBadgeIds.has(previousFavoriteId)
+  if (!success) {
+    return res.send(createXML({
+      response: responseData
+    }))
+  }
 
-    if (wouldClearValidFavorite) {
-      favoriteBadgeData = resolveFavoriteBadgeFromValues(
-        fairy.moreOptions,
-        previousFavoriteId,
-        earnedBadgeIds
-      )
-    } else if (
-      isOwnFairy &&
-      (
-        fairy.moreOptions !== favoriteBadgeData.moreOptions ||
-        Number(fairy.favoriteBadgeId || 0) !== favoriteBadgeData.favoriteBadgeId
-      )
-    ) {
-      profileWritePatch = {
-        moreOptions: favoriteBadgeData.moreOptions,
-        favoriteBadgeId: favoriteBadgeData.favoriteBadgeId
-      }
-      fairy.moreOptions = favoriteBadgeData.moreOptions
-      fairy.favoriteBadgeId = favoriteBadgeData.favoriteBadgeId
-    }
+  // The account name above the fairy name comes off the DistributedFairyPlayer's
+  // DISLname/DISLid when the fairy is in our meadow, but LimitedProfile.setFairyXML
+  // reads it from response.user_name / fairy.user_id for anyone we can't see.
+  // FairyClient.lua sets DISLname from the play token (the account username) and
+  // DISLid from the account _id, so mirror those two here or the header renders blank
+  // and the friend/ignore/report buttons act on player id 0.
+  if (fairyData) {
+    responseData.user_name = fairyData.ownerAccount || await db.getUserNameFromAccountId(fairyData.accountId)
+  }
 
-    const ownerUsername = fairy.ownerAccount || await db.getUserNameFromAccountId(fairy.accountId)
-    if (ownerUsername) {
-      responseData.user_name = ownerUsername
-    }
-    const membership = ownerUsername && !isSyntheticLeaderboardOwner(ownerUsername)
-      ? await db.resolveMembershipContext(
-        ownerUsername,
-        isLeaderboardBustPull ? null : ses
-      )
-      : { memberDays: NON_MEMBER_DAYS }
-    const accountMemberDays = membership.memberDays
-    const lastAckMemberDays = Number(fairy.lastAckMemberDays ?? NON_MEMBER_DAYS)
-    const responseMemberDays = accountMemberDays
-
-    const [tutorialLo, tutorialHi] = profileTutorialBitmask(fairy)
+  responseData.fairies = []
+  for (const fairy of fairiesToSend) {
+    const earnedBadges = fairy.badgeData?.badges?.filter(b => b.status === 'Earned') ?? []
+    // Newest is whichever earned badge has the latest dateEarned, i.e. the one
+    // the badges tab shows next to "recent_badge".
+    const newestBadge = earnedBadges.reduce((newest, badge) => {
+      if (!badge.dateEarned) return newest
+      if (!newest || badge.dateEarned > newest.dateEarned) return badge
+      return newest
+    }, null)
 
     const fairyEl = {
       '@fairy_id': fairy._id,
       '#': {
+        user_id: fairy.accountId,
         address: fairy.address,
-        more_options: favoriteBadgeData.moreOptions,
-        badge_count: badgeCount,
-        total_badges: badgeCount,
-        newest_badge: newestBadge,
-        recent_badge: newestBadge,
-        fav_badge: favoriteBadgeData.favoriteBadgeId,
-        favorite_badge: favoriteBadgeData.favoriteBadgeId,
-        tutorial: tutorialLo,
-        tutorial_hi: tutorialHi,
-        created: profileCreatedDate(fairy),
+        more_options: fairy.moreOptions,
+        // Home privacy is stored in the moreOptions bit-string at offset 15
+        // (client FairiesConstants.MORE_OPTIONS_HOME_PRIVACY_OFFSET): 0 = public,
+        // 1 = friends-only. The client reads home_privacy_state off the profile
+        // (HomeValidator / Profile) to decide whether a non-friend may enter this
+        // fairy's home, so surface it explicitly rather than making the client
+        // re-derive it from the raw string.
+        home_privacy_state: Number((fairy.moreOptions || '').charAt(15)) || 0,
+        tutorial: fairy.tutorialBitmask[0],
+        tutorial_hi: fairy.tutorialBitmask[1],
+        created: fairy.created.toISOString().split('T')[0],
         name: fairy.name,
         talent: fairy.talent,
         gender: fairy.gender,
@@ -1443,19 +696,14 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         game_prof_bg: fairy.game_prof_bg,
         options_mask: fairy.optionsBitmask,
         level: fairy.level,
-        member_days: responseMemberDays,
-        user_id: fairy.accountId
+        // Needed so visitors can render this fairy's home/garden. Both default
+        // to the fairy's talent until they customise them (see setHomeType).
+        home_type_id: fairy.homeType ?? fairy.talent,
+        garden_type_id: fairy.gardenType ?? 1,
+        badge_count: earnedBadges.length,
+        fav_badge: fairy.badgeData?.favoriteBadgeId ?? 0,
+        newest_badge: newestBadge?.badgeId ?? 0
       }
-    }
-
-    if (isOwnFairy && shouldAckMemberDays(accountMemberDays, lastAckMemberDays)) {
-      profileWritePatch = profileWritePatch || {}
-      profileWritePatch.lastAckMemberDays = accountMemberDays
-      fairy.lastAckMemberDays = accountMemberDays
-    }
-
-    if (profileWritePatch && sessionOwnFairy) {
-      await db.updateOwnedFairyFields(sessionOwnFairy, ses, profileWritePatch)
     }
 
     if (loggedInFairy) {
@@ -1474,15 +722,18 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
       }]
     }
 
-    const includeAvatar = includeAvatarExplicit || Boolean(fairy.avatar)
-    const avatarForResponse = profileAvatarSource(fairy, includeAvatarExplicit)
-
-    if (includeAvatar && avatarForResponse) {
+    if (includeAvatar && fairy.avatar) {
       const avatarEl = {}
 
-      const proportions = []
-      if (avatarForResponse.proportions) {
-        for (const [type, value] of Object.entries(avatarForResponse.proportions)) {
+      // Each proportion/rotation is its own repeated element: the client walks
+      // them with `for each(rot in data.rotation)` (see AvatarDNA.fromXML), and
+      // it's the same shape the client sends us at fairy creation. Collecting
+      // them into an array is what makes xmlbuilder2 repeat the tag — assigning
+      // in the loop would emit only the last one.
+      if (fairy.avatar.proportions) {
+        const proportions = []
+
+        for (const [type, value] of Object.entries(fairy.avatar.proportions)) {
           if (value != null) {
             proportions.push({
               '@type': type.toUpperCase(),
@@ -1490,14 +741,16 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
             })
           }
         }
-      }
-      if (proportions.length > 0) {
-        avatarEl.proportion = proportions
+
+        if (proportions.length) {
+          avatarEl.proportion = proportions
+        }
       }
 
-      const rotations = []
-      if (avatarForResponse.rotations) {
-        for (const [type, value] of Object.entries(avatarForResponse.rotations)) {
+      if (fairy.avatar.rotations) {
+        const rotations = []
+
+        for (const [type, value] of Object.entries(fairy.avatar.rotations)) {
           if (value != null) {
             rotations.push({
               '@type': type.toUpperCase(),
@@ -1505,27 +758,28 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
             })
           }
         }
-      }
-      if (rotations.length > 0) {
-        avatarEl.rotation = rotations
+
+        if (rotations.length) {
+          avatarEl.rotation = rotations
+        }
       }
 
       const simpleFields = [
         'hair_back', 'hair_front', 'face', 'eye', 'wing',
-        'hair_color', 'hair_color2', 'eye_color', 'skin_color', 'wing_color'
+        'hair_color', 'eye_color', 'skin_color', 'wing_color'
       ]
       for (const field of simpleFields) {
-        if (avatarForResponse[field] != null) {
-          avatarEl[field] = avatarForResponse[field]
+        if (fairy.avatar[field] != null) {
+          avatarEl[field] = fairy.avatar[field]
         }
       }
 
       avatarEl.gender = fairy.gender
 
-      if (avatarForResponse.items) {
+      if (fairy.avatar.items) {
         avatarEl.inv_item = []
 
-        for (const item of avatarForResponse.items) {
+        for (const item of fairy.avatar.items) {
           if (item.location !== "Equipped") {
             continue;
           }
@@ -1560,20 +814,11 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     }
 
     responseData.fairies.push({ fairy: fairyEl })
-    }
-
-    return res.send(createXML({
-      response: responseData
-    }))
-  } catch (err) {
-    console.error('FairiesProfileRequest failed:', err)
-    return res.send(createXML({
-      response: {
-        success: false,
-        status: ses?.logged ? 'logged_in' : 'not_logged_in'
-      }
-    }))
   }
+
+  res.send(createXML({
+    response: responseData
+  }))
 })
 
 app.post('/fairies/api/FairiesNewFairyRequest', async (req, res) => {
@@ -1602,7 +847,7 @@ app.post('/fairies/api/FairiesNewFairyRequest', async (req, res) => {
   }
 
   // TODO: Support multiple fairies for Pixie Hollow Rewritten
-  const existing = await db.retrieveFairyByOwnerAccount(ses.username)
+  const existing = await db.retrieveFairyByOwnerAccount(ses.username);
 
   if (existing) {
     success = false
@@ -1632,61 +877,36 @@ app.post('/fairies/api/ChooseFairyRequest', (req, res) => {
   }))
 })
 
+// type "games" -> minigame high scores, type "stats" -> crafting recipe stats.
+// Both are populated by the game-server AI directly (MongoInterface.recordStat)
+// and read back here in the shape FullProfile/FairyInventoryMgr expect:
+// response.inventory.stat[] with child elements stat_id/count/best/total/bonus.
+const INVENTORY_STAT_TYPES = {
+  games: 'game',
+  stats: 'recipe'
+}
+
 app.post('/fairies/api/FairiesInventoryRequest', async (req, res) => {
-  const ses = req.session
-  const requestType = resolveInventoryRequestType(req.body)
+  const statType = INVENTORY_STAT_TYPES[req.body.type]
 
-  if (requestType === 'games') {
-    const fairyId = await resolveInventoryFairyId(req.body, ses)
-    const fairy = fairyId ? await db.retrieveFairy(fairyId) : null
-    const stat = buildGameStatEntries(fairy?.gameStats)
-    const inventory = { type: 'games' }
+  if (statType) {
+    const fairyId = req.body.fairy_id ?? req.session?.fairyId ?? null
+    const fairy = fairyId !== null ? await db.retrieveFairy(parseInt(fairyId)) : false
 
-    if (stat.length) {
-      inventory.stat = stat
-    }
+    const stats = fairy ? fairy.stats.filter(s => s.type === statType) : []
 
     return res.send(createXML({
       response: {
         success: true,
-        inventory
-      }
-    }))
-  }
-
-  if (requestType === 'stats' && ses?.logged) {
-    const fairyId = await resolveInventoryFairyId(req.body, ses)
-    const fairy = fairyId ? await db.retrieveFairy(fairyId) : null
-    const stat = buildGameStatEntries(fairy?.gameStats)
-    const inventory = { type: 'stats' }
-
-    if (stat.length) {
-      inventory.stat = stat
-    }
-
-    return res.send(createXML({
-      response: {
-        success: true,
-        inventory
-      }
-    }))
-  }
-
-  if (requestType === 'badges') {
-    const fairyId = await resolveInventoryFairyId(req.body, ses)
-    const fairy = fairyId ? await db.retrieveFairy(fairyId) : null
-    const earnedBadges = Array.isArray(fairy?.earnedBadges) ? fairy.earnedBadges : []
-    const invItem = buildBadgeInvEntries(earnedBadges)
-    const inventory = { type: 'badges' }
-
-    if (invItem.length) {
-      inventory.inv_item = invItem
-    }
-
-    return res.send(createXML({
-      response: {
-        success: true,
-        inventory
+        inventory: {
+          stat: stats.map(s => ({
+            stat_id: s.statId,
+            count: s.count,
+            best: s.best,
+            total: s.total,
+            bonus: s.bonus
+          }))
+        }
       }
     }))
   }
@@ -1770,9 +990,10 @@ app.post('/fairies/api/CouponRedemptionRequest', async (req, res) => {
 
 app.post('/fairies/api/FairiesEditBioRequest', async (req, res) => {
     const questions = req.body.fairieseditbiorequest?.bio?.[0]?.question
+    const ses = req.session
     const success = true
 
-    if (!questions || questions.length != 6) {
+    if (!ses.logged || !questions || questions.length != 6) {
       return res.send(createXML({
         response: {
           success: !success
@@ -1780,20 +1001,23 @@ app.post('/fairies/api/FairiesEditBioRequest', async (req, res) => {
       }))
     }
 
-    const fairy = await resolveOwnedSessionFairyForWrite(req, res)
-    if (!fairy) {
-      return
+    const fairy = await db.retrieveFairy(ses.fairyId)
+    for (const [i, question] of questions.entries()) {
+      fairy.bio[i] = {
+        id: i+1,
+        answer: parseInt(question.answer[0]),
+      }
     }
 
-    const bio = questions.map((question, i) => ({
-      id: i + 1,
-      answer: parseInt(question.answer[0], 10)
-    }))
+    await fairy.save()
 
-    const saved = await db.updateOwnedFairyFields(fairy, req.session, { bio })
-    if (!saved) {
-      return sendProfileWriteFailure(res)
-    }
+    // Saving isn't enough on its own. setBio is `required db` (see fairy.dc),
+    // so the state server read it once when this fairy generated and has been
+    // serving that copy ever since. The profile panel reads bio off the live
+    // distributed object for any fairy present in the district (see
+    // LimitedProfile.onProfileLoaded), so without this the fairy's own profile
+    // and every visitor's view of it stay stale until the next relog.
+    md.sendFairyBio(fairy._id, fairy.bio)
 
     res.send(createXML({
       response: {
@@ -1803,11 +1027,12 @@ app.post('/fairies/api/FairiesEditBioRequest', async (req, res) => {
 })
 
 app.post('/fairies/api/FairiesEditIconRequest', async (req, res) => {
-    const iconId = parseInt(req.body.icon_id, 10)
+    const iconId = req.body.icon_id
     const bgId = req.body.game_prof_bg
+    const ses = req.session
     const success = true
 
-    if (!Number.isFinite(iconId) || iconId <= 0) {
+    if (!ses.logged || !iconId) {
       return res.send(createXML({
         response: {
           success: !success
@@ -1815,18 +1040,11 @@ app.post('/fairies/api/FairiesEditIconRequest', async (req, res) => {
       }))
     }
 
-    const fairy = await resolveOwnedSessionFairyForWrite(req, res)
-    if (!fairy) {
-      return
-    }
+    const fairy = await db.retrieveFairy(ses.fairyId)
+    fairy.icon = iconId
+    fairy.game_prof_bg = bgId
 
-    const saved = await db.updateOwnedFairyFields(fairy, req.session, {
-      icon: iconId,
-      game_prof_bg: bgId
-    })
-    if (!saved) {
-      return sendProfileWriteFailure(res)
-    }
+    await fairy.save()
 
     res.send(createXML({
       response: {
@@ -1835,105 +1053,42 @@ app.post('/fairies/api/FairiesEditIconRequest', async (req, res) => {
     }))
 })
 
-async function resolveSessionFairy (req) {
-  return db.resolveWritableSessionFairy(req)
-}
+app.post('/fairies/api/UpdateFavoriteBadgeRequest', async (req, res) => {
+    const badgeId = parseInt(req.body.badge_id)
+    const ses = req.session
+    const success = true
 
-function sendProfileWriteFailure (res) {
-  return res.send(createXML({
-    response: {
-      success: false
+    if (!ses.logged || !badgeId) {
+      return res.send(createXML({
+        response: {
+          success: !success
+        }
+      }))
     }
-  }))
-}
 
-async function resolveOwnedSessionFairyForWrite (req, res) {
-  const bodyFairyId = extractFairyIdFromBody(req.body)
-  const fairy = await resolveSessionFairy(req)
-  if (!fairy) {
-    sendProfileWriteFailure(res)
-    return null
-  }
+    const fairy = await db.retrieveFairy(ses.fairyId)
 
-  if (bodyFairyId > 0 && Number(bodyFairyId) !== Number(fairy._id)) {
-    sendProfileWriteFailure(res)
-    return null
-  }
-
-  return fairy
-}
-
-async function handleFavoriteBadgeRequest (req, res) {
-  const favoriteRequest = resolveFavoriteFromRequest(req.body)
-  const badgeId = favoriteRequest.badgeId
-
-  const fairy = await resolveOwnedSessionFairyForWrite(req, res)
-  if (!fairy) {
-    return
-  }
-
-  if (badgeId <= 0) {
-    return res.send(createXML({
-      response: {
-        success: false
-      }
-    }))
-  }
-
-  const earnedBadges = Array.isArray(fairy.earnedBadges) ? fairy.earnedBadges : []
-  const earnedBadgeIds = new Set(
-    earnedBadges.map((entry) => Number(entry.badgeId))
-  )
-  if (!earnedBadgeIds.has(badgeId)) {
-    return res.send(createXML({
-      response: {
-        success: false
-      }
-    }))
-  }
-
-  let moreOptions = fairy.moreOptions
-  if (favoriteRequest.moreOptions) {
-    moreOptions = repairMoreOptions(
-      favoriteRequest.moreOptions,
-      badgeId,
-      earnedBadgeIds
+    // The badges panel only shows the "make favorite" button on a badge
+    // FairiesBadgeManager has already told the client is Earned, but a client
+    // is not trusted to enforce that -- checked again here.
+    const isEarned = fairy.badgeData?.badges?.some(
+      badge => badge.badgeId === badgeId && badge.status === 'Earned'
     )
-  } else {
-    moreOptions = setFavoriteInMoreOptions(fairy.moreOptions, badgeId)
-  }
 
-  const resolvedFavoriteId = parseFavoriteBadgeFromMoreOptions(moreOptions)
-  const favoriteToStore = resolvedFavoriteId > 0 ? resolvedFavoriteId : badgeId
-  const saved = await db.updateFavoriteBadgeForSessionOwner(
-    fairy,
-    req.session,
-    favoriteToStore,
-    moreOptions
-  )
+    if (!isEarned) {
+      return res.send(createXML({
+        response: {
+          success: !success
+        }
+      }))
+    }
 
-  if (!saved) {
-    return res.send(createXML({
+    fairy.badgeData.favoriteBadgeId = badgeId
+    await fairy.save()
+
+    res.send(createXML({
       response: {
-        success: false
+        success
       }
     }))
-  }
-
-  return res.send(createXML({
-    response: {
-      success: true
-    }
-  }))
-}
-
-app.post('/fairies/api/UpdateFavoriteBadgeRequest', (req, res) => {
-  return handleFavoriteBadgeRequest(req, res)
 })
-
-setTimeout(() => {
-  warmLeaderboardBustCache()
-}, 3000)
-setInterval(() => {
-  warmLeaderboardBustCache()
-}, 5 * 60 * 1000)

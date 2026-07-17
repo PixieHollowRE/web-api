@@ -13,45 +13,9 @@ const bcrypt = require('bcrypt')
 
 const axios = require('axios').default
 
-const {
-  computeMemberDays,
-  isMember,
-  parseMembershipStartDate,
-  readPrecountedMemberDays,
-  canonicalArrivalDate
-} = require('../utils/loyalty')
-
 const saltRounds = 12
 
 const userAgent = 'Sunrise Games - Pixie Hollow API'
-
-const STARTER_FURNITURE = {
-  1: [ // animal talent starter furniture
-    { item_id: 6507, color1: 114, color2: 0 }, // Toadstool Tableset
-    { item_id: 7005, color1: 115, color2: 0 }, // Glowing Gourd Lamp
-    { item_id: 7512, color1: 142, color2: 0 }  // Woven Basket
-  ],
-  2: [ // garden talent starter furniture
-    { item_id: 6513, color1: 254, color2: 0 }, // Sunflower Loveseat
-    { item_id: 7007, color1: 157, color2: 0 }, // Rose of Sharon Lamp
-    { item_id: 7507, color1: 121, color2: 0 }  // Watering Tin
-  ],
-  3: [ // light talent starter furniture
-    { item_id: 6502, color1: 127, color2: 0 }, // Swirled Toadstool Chairs
-    { item_id: 7003, color1: 128, color2: 0 }, // Daisy Table Lamp
-    { item_id: 7523, color1: 116, color2: 0 }  // Firefly Fetcher
-  ],
-  4: [ // water talent starter furniture
-    { item_id: 6535, color1: 135, color2: 0 }, // Eggshell Tea Table
-    { item_id: 7001, color1: 131, color2: 0 }, // Tulip Floor Lamp
-    { item_id: 7509, color1: 132, color2: 0 }  // River Stone Pitcher
-  ],
-  5: [ // tinker talent starter furniture
-    { item_id: 6512, color1: 2, color2: 0 }, // Tulip Leaf Table
-    { item_id: 7004, color1: 12, color2: 0 }, // Petal Candle
-    { item_id: 7511, color1: 102, color2: 0 }  // Clay Pot
-  ]
-}
 
 class Database {
   constructor() {
@@ -147,10 +111,6 @@ class Database {
       userId: accountId
     }
 
-    if (loginType !== 'swid') {
-      await this.createSession(req, username, accountId, false)
-    }
-
     res.setHeader('content-type', 'text/xml')
     res.send(createXML({
       result: responseData
@@ -206,15 +166,10 @@ class Database {
     ses.status = 'logged_in_player'
     ses.logged = true
     ses.userId = accountId
-    ses.viewProfileFairyId = null
-    ses.fairyId = null
 
     if (!justRegistered) {
-      const fairy = await this.retrieveFairyByOwnerAccount(username)
-        || await this.retrieveFairyByAccountId(accountId)
-      if (fairy) {
-        ses.fairyId = fairy._id
-      }
+      const fairy = await this.retrieveFairy(accountId)
+      ses.fairyId = fairy._id
     }
   }
 
@@ -246,97 +201,6 @@ class Database {
     }
 
     return false
-  }
-
-  async retrieveFairyById(fairyId) {
-    const id = Number(fairyId)
-    if (!Number.isFinite(id) || id <= 0) {
-      return false
-    }
-
-    return Fairy.findOne({ _id: id }) || false
-  }
-
-  async retrieveFairyByAccountId(accountId) {
-    const id = Number(accountId)
-    if (!Number.isFinite(id) || id <= 0) {
-      return false
-    }
-
-    return Fairy.findOne({ accountId: id }) || false
-  }
-
-  fairyBelongsToSession(fairy, ses) {
-    if (!fairy || !ses?.logged) {
-      return false
-    }
-
-    const owner = String(fairy.ownerAccount || '').toLowerCase()
-    const sessionUser = String(ses.username || '').toLowerCase()
-    if (owner && sessionUser && owner === sessionUser) {
-      return true
-    }
-
-    if (ses.userId && Number(fairy.accountId) === Number(ses.userId)) {
-      return true
-    }
-
-    return false
-  }
-
-  async resolveWritableSessionFairy(req) {
-    const ses = req.session
-    if (!ses?.logged) {
-      return null
-    }
-
-    let fairy = null
-    if (ses.username) {
-      fairy = await this.retrieveFairyByOwnerAccount(ses.username)
-    }
-
-    if (!fairy && Number(ses.fairyId || 0) > 0) {
-      fairy = await this.retrieveFairyById(ses.fairyId)
-      if (fairy && !this.fairyBelongsToSession(fairy, ses)) {
-        fairy = null
-      }
-    }
-
-    if (!fairy && ses.userId) {
-      fairy = await this.retrieveFairyByAccountId(ses.userId)
-    }
-
-    if (!fairy || !this.fairyBelongsToSession(fairy, ses)) {
-      return null
-    }
-
-    ses.fairyId = fairy._id
-    return fairy
-  }
-
-  async updateOwnedFairyFields(fairy, ses, fields) {
-    if (!fairy || !ses?.username || !this.fairyBelongsToSession(fairy, ses)) {
-      return false
-    }
-
-    if (!fields || !Object.keys(fields).length) {
-      return false
-    }
-
-    const ownerAccount = String(ses.username).toLowerCase()
-    const result = await Fairy.findOneAndUpdate(
-      { _id: fairy._id, ownerAccount },
-      { $set: fields }
-    )
-
-    return !!result
-  }
-
-  async updateFavoriteBadgeForSessionOwner(fairy, ses, badgeId, moreOptions) {
-    return this.updateOwnedFairyFields(fairy, ses, {
-      favoriteBadgeId: badgeId,
-      moreOptions
-    })
   }
 
   async retrieveFairyByOwnerAccount(owner) {
@@ -382,62 +246,6 @@ class Database {
       }
     })
     return request.data
-  }
-
-  async resolveMembershipContext (username, session = null) {
-    const cacheKey = username.toLowerCase()
-    if (session) {
-      if (!session.membershipByUser) {
-        session.membershipByUser = {}
-      }
-      if (session.membershipByUser[cacheKey]) {
-        return session.membershipByUser[cacheKey]
-      }
-    }
-
-    const [accData, localAccount] = await Promise.all([
-      this.retrieveAccountData(username),
-      Account.findOne({ username }).select('membershipStartDate _id username')
-    ])
-
-    let membershipStartDate = localAccount?.membershipStartDate || null
-    const hasSunriseStart = Boolean(parseMembershipStartDate(accData))
-    const hasPrecountedDays = readPrecountedMemberDays(accData) !== null
-
-    if (
-      localAccount &&
-      !hasSunriseStart &&
-      !hasPrecountedDays &&
-      !membershipStartDate
-    ) {
-      const fairy = await Fairy.findOne({
-        $or: [
-          { accountId: localAccount._id },
-          { ownerAccount: username }
-        ]
-      }).select('created')
-
-      const arrivalDate = canonicalArrivalDate(fairy, localAccount) || new Date()
-      membershipStartDate = arrivalDate
-      await Account.updateOne(
-        { _id: localAccount._id },
-        { $set: { membershipStartDate } }
-      )
-    }
-
-    const memberDays = computeMemberDays(accData, membershipStartDate)
-    const value = {
-      accData,
-      localAccount,
-      memberDays,
-      membershipStartDate
-    }
-
-    if (session) {
-      session.membershipByUser[cacheKey] = value
-    }
-
-    return value
   }
 
   async checkLogin(username, password) {
@@ -550,30 +358,14 @@ class Database {
       }
       return questions
     }
-    const talentNum = parseInt(fairyData.talent[0])
-    const starterFurniture = STARTER_FURNITURE[talentNum] || []
-
-    for (const f of starterFurniture) {
-      items.push({
-        inv_id: await this.getNextDoId(),
-        type: "Furniture",
-        item_id: f.item_id,
-        color1: f.color1,
-        color2: f.color2,
-        location: "Storage"
-      })
-    }
-
 
     const account = await this.retrieveAccountFromIdentifier(accountId)
-    const arrivalDate = new Date()
 
     // Store our fairy.
     const fairy = new Fairy({
       _id: await this.getNextDoId(),
       ownerAccount: await this.getUserNameFromAccountId(accountId),
       accountId,
-      created: arrivalDate,
       name: fairyData.name[0],
       talent: parseInt(fairyData.talent[0]),
       gender: parseInt(fairyData.gender[0]),
@@ -587,7 +379,6 @@ class Database {
         eye: parseInt(avatar.eye[0]),
         wing: parseInt(avatar.wing[0]),
         hair_color: parseInt(avatar.hair_color[0]),
-        hair_color2: avatar.hair_color2 ? parseInt(avatar.hair_color2[0]) : 0,
         eye_color: parseInt(avatar.eye_color[0]),
         skin_color: parseInt(avatar.skin_color[0]),
         wing_color: parseInt(avatar.wing_color[0]),
@@ -599,9 +390,6 @@ class Database {
 
     // Save the information into the account.
     account.playerId = fairy._id
-    if (!account.membershipStartDate) {
-      account.membershipStartDate = arrivalDate
-    }
     await account.save()
 
     return saved._id
