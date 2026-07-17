@@ -1,5 +1,6 @@
 /* global app:writable */
 /* global db:writeable */
+/* global md:writeable */
 
 app = global.app
 
@@ -405,6 +406,34 @@ app.get('/fairies/api/internal/retrieveObject/:identifier', async (req, res) => 
   }
 })
 
+// The Flash-facing routes read bio as { id, answer } records, but the cluster
+// can hand it back to us in other shapes: setBio is a `db` field, so any update
+// that goes through the state server write-throughs to APIDatabase.lua, whose
+// Lua unpacker reads BioAnswer struct members positionally (see how it takes
+// setFairyDNA apart as value[1], value[2]...). Pin the shape here so a
+// round-trip can't quietly rewrite bio into something the profile can't read.
+function normaliseBio (value) {
+  if (!Array.isArray(value)) {
+    return value
+  }
+
+  return value.map((answer, i) => {
+    if (Array.isArray(answer)) {
+      // BioAnswer { int16 questionId; int16 answerId; }
+      return { id: answer[0], answer: answer[1] }
+    }
+
+    if (answer && typeof answer === 'object') {
+      return {
+        id: answer.id ?? answer.questionId ?? i + 1,
+        answer: answer.answer ?? answer.answerId ?? 0
+      }
+    }
+
+    return answer
+  })
+}
+
 app.post('/fairies/api/internal/updateObject/:identifier', async (req, res) => {
   if (!verifyAuthorization(req.headers.authorization)) {
     return res.status(401).send('Authorization failed.')
@@ -455,6 +484,8 @@ app.post('/fairies/api/internal/updateObject/:identifier', async (req, res) => {
         for (const [key, value] of Object.entries(data)) {
           if (fairyDNAFieldMap[key]) {
             fairy.set(fairyDNAFieldMap[key], value)
+          } else if (key === 'bio') {
+            fairy.bio = normaliseBio(value)
           } else {
             fairy[key] = value
           }
@@ -620,13 +651,40 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     }))
   }
 
+  // The account name above the fairy name comes off the DistributedFairyPlayer's
+  // DISLname/DISLid when the fairy is in our meadow, but LimitedProfile.setFairyXML
+  // reads it from response.user_name / fairy.user_id for anyone we can't see.
+  // FairyClient.lua sets DISLname from the play token (the account username) and
+  // DISLid from the account _id, so mirror those two here or the header renders blank
+  // and the friend/ignore/report buttons act on player id 0.
+  if (fairyData) {
+    responseData.user_name = fairyData.ownerAccount || await db.getUserNameFromAccountId(fairyData.accountId)
+  }
+
   responseData.fairies = []
   for (const fairy of fairiesToSend) {
+    const earnedBadges = fairy.badgeData?.badges?.filter(b => b.status === 'Earned') ?? []
+    // Newest is whichever earned badge has the latest dateEarned, i.e. the one
+    // the badges tab shows next to "recent_badge".
+    const newestBadge = earnedBadges.reduce((newest, badge) => {
+      if (!badge.dateEarned) return newest
+      if (!newest || badge.dateEarned > newest.dateEarned) return badge
+      return newest
+    }, null)
+
     const fairyEl = {
       '@fairy_id': fairy._id,
       '#': {
+        user_id: fairy.accountId,
         address: fairy.address,
         more_options: fairy.moreOptions,
+        // Home privacy is stored in the moreOptions bit-string at offset 15
+        // (client FairiesConstants.MORE_OPTIONS_HOME_PRIVACY_OFFSET): 0 = public,
+        // 1 = friends-only. The client reads home_privacy_state off the profile
+        // (HomeValidator / Profile) to decide whether a non-friend may enter this
+        // fairy's home, so surface it explicitly rather than making the client
+        // re-derive it from the raw string.
+        home_privacy_state: Number((fairy.moreOptions || '').charAt(15)) || 0,
         tutorial: fairy.tutorialBitmask[0],
         tutorial_hi: fairy.tutorialBitmask[1],
         created: fairy.created.toISOString().split('T')[0],
@@ -637,7 +695,14 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         icon: fairy.icon,
         game_prof_bg: fairy.game_prof_bg,
         options_mask: fairy.optionsBitmask,
-        level: fairy.level
+        level: fairy.level,
+        // Needed so visitors can render this fairy's home/garden. Both default
+        // to the fairy's talent until they customise them (see setHomeType).
+        home_type_id: fairy.homeType ?? fairy.talent,
+        garden_type_id: fairy.gardenType ?? 1,
+        badge_count: earnedBadges.length,
+        fav_badge: fairy.badgeData?.favoriteBadgeId ?? 0,
+        newest_badge: newestBadge?.badgeId ?? 0
       }
     }
 
@@ -660,25 +725,42 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     if (includeAvatar && fairy.avatar) {
       const avatarEl = {}
 
+      // Each proportion/rotation is its own repeated element: the client walks
+      // them with `for each(rot in data.rotation)` (see AvatarDNA.fromXML), and
+      // it's the same shape the client sends us at fairy creation. Collecting
+      // them into an array is what makes xmlbuilder2 repeat the tag — assigning
+      // in the loop would emit only the last one.
       if (fairy.avatar.proportions) {
+        const proportions = []
+
         for (const [type, value] of Object.entries(fairy.avatar.proportions)) {
           if (value != null) {
-            avatarEl.proportion = {
+            proportions.push({
               '@type': type.toUpperCase(),
               '#': value
-            }
+            })
           }
+        }
+
+        if (proportions.length) {
+          avatarEl.proportion = proportions
         }
       }
 
       if (fairy.avatar.rotations) {
+        const rotations = []
+
         for (const [type, value] of Object.entries(fairy.avatar.rotations)) {
           if (value != null) {
-            avatarEl.rotation = {
+            rotations.push({
               '@type': type.toUpperCase(),
               '#': value
-            }
+            })
           }
+        }
+
+        if (rotations.length) {
+          avatarEl.rotation = rotations
         }
       }
 
@@ -795,7 +877,40 @@ app.post('/fairies/api/ChooseFairyRequest', (req, res) => {
   }))
 })
 
-app.post('/fairies/api/FairiesInventoryRequest', (req, res) => {
+// type "games" -> minigame high scores, type "stats" -> crafting recipe stats.
+// Both are populated by the game-server AI directly (MongoInterface.recordStat)
+// and read back here in the shape FullProfile/FairyInventoryMgr expect:
+// response.inventory.stat[] with child elements stat_id/count/best/total/bonus.
+const INVENTORY_STAT_TYPES = {
+  games: 'game',
+  stats: 'recipe'
+}
+
+app.post('/fairies/api/FairiesInventoryRequest', async (req, res) => {
+  const statType = INVENTORY_STAT_TYPES[req.body.type]
+
+  if (statType) {
+    const fairyId = req.body.fairy_id ?? req.session?.fairyId ?? null
+    const fairy = fairyId !== null ? await db.retrieveFairy(parseInt(fairyId)) : false
+
+    const stats = fairy ? fairy.stats.filter(s => s.type === statType) : []
+
+    return res.send(createXML({
+      response: {
+        success: true,
+        inventory: {
+          stat: stats.map(s => ({
+            stat_id: s.statId,
+            count: s.count,
+            best: s.best,
+            total: s.total,
+            bonus: s.bonus
+          }))
+        }
+      }
+    }))
+  }
+
   const items = [
     { item_id: 2501, inv_id: 3612, slot: 0, created_by_id: 0, gifted_by_id: 0, quality: 3, color: { number: 1, value: 37 } },
     { item_id: 2503, inv_id: 3876, slot: 1, created_by_id: 0, gifted_by_id: 0, quality: 3, color: { number: 1, value: 39 } },
@@ -896,6 +1011,14 @@ app.post('/fairies/api/FairiesEditBioRequest', async (req, res) => {
 
     await fairy.save()
 
+    // Saving isn't enough on its own. setBio is `required db` (see fairy.dc),
+    // so the state server read it once when this fairy generated and has been
+    // serving that copy ever since. The profile panel reads bio off the live
+    // distributed object for any fairy present in the district (see
+    // LimitedProfile.onProfileLoaded), so without this the fairy's own profile
+    // and every visitor's view of it stay stale until the next relog.
+    md.sendFairyBio(fairy._id, fairy.bio)
+
     res.send(createXML({
       response: {
         success
@@ -921,6 +1044,46 @@ app.post('/fairies/api/FairiesEditIconRequest', async (req, res) => {
     fairy.icon = iconId
     fairy.game_prof_bg = bgId
 
+    await fairy.save()
+
+    res.send(createXML({
+      response: {
+        success
+      }
+    }))
+})
+
+app.post('/fairies/api/UpdateFavoriteBadgeRequest', async (req, res) => {
+    const badgeId = parseInt(req.body.badge_id)
+    const ses = req.session
+    const success = true
+
+    if (!ses.logged || !badgeId) {
+      return res.send(createXML({
+        response: {
+          success: !success
+        }
+      }))
+    }
+
+    const fairy = await db.retrieveFairy(ses.fairyId)
+
+    // The badges panel only shows the "make favorite" button on a badge
+    // FairiesBadgeManager has already told the client is Earned, but a client
+    // is not trusted to enforce that -- checked again here.
+    const isEarned = fairy.badgeData?.badges?.some(
+      badge => badge.badgeId === badgeId && badge.status === 'Earned'
+    )
+
+    if (!isEarned) {
+      return res.send(createXML({
+        response: {
+          success: !success
+        }
+      }))
+    }
+
+    fairy.badgeData.favoriteBadgeId = badgeId
     await fairy.save()
 
     res.send(createXML({

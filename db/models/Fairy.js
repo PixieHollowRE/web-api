@@ -16,15 +16,40 @@ const Fairy = new mongoose.model('Fairy', {
   game_prof_bg: { type: String, default: null },
   bio: { type: Array },
   address: { type: String, default: '1234CatepillerCorral' },
+  homeType: { type: Number, default: null }, // home_type_id; falls back to talent when unset
   moreOptions: { type: String, default: '000000000000000000000000' },
   tutorialBitmask: { type: Array, default: [0, 0] },
   optionsBitmask: { type: Number, default: 0 },
   gold: { type: Number, default: 0 },
   goldTradedToday: { type: Number, default: 0 },
-  goldTradedDate: { type: Date, default: null }, 
+  lastGoldTradeAt: { type: Date, default: null }, 
   pouch: { type: Array },
+  maxOutfitSlots: { type: Number, default: 1 }, // saved-outfit slots; owned by the game-server AI
+  savedOutfits: { type: Array, default: [] }, // written only by the game-server AI (DistributedFairyPlayerAI)
   level: { type: Number, default: 0 },
   dailyChanceLastSpin: { type: Date, default: null },
+  badgeData: {
+    badges: [{
+      badgeId: { type: Number },
+      status: {
+        type: String,
+        enum: ['Active', 'Earned'],
+        default: 'Active'
+      },
+      progress: { type: Number, default: 0 },
+      dateEarned: { type: Date, default: null }
+    }],
+    unlockedPages: { type: Array, default: [] },
+    favoriteBadgeId: { type: Number, default: 0 }
+  },
+  stats: [{
+    type: { type: String, enum: ['recipe', 'game'], required: true },
+    statId: { type: Number, required: true },
+    count: { type: Number, default: 0 },
+    best: { type: Number, default: 0 },
+    total: { type: Number, default: 0 },
+    bonus: { type: Number, default: 0 },
+  }],
   avatar: {
     proportions: {
       head: Number,
@@ -69,6 +94,18 @@ const Fairy = new mongoose.model('Fairy', {
         type: String,
         enum: ['Equipped', 'Wardrobe', 'Storage'],
         default: 'Wardrobe'
+      },
+      home: {
+        type: {
+          roomId: Number,
+          x: Number,
+          y: Number,
+          depth: Number,
+          flip: Number,
+          scale: Number
+        },
+        default: undefined,
+        _id: false
       }
     }]
   }
