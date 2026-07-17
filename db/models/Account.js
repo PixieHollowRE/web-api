@@ -8,7 +8,9 @@ const Account = new mongoose.model('Account', {
   password: { type: String },
   playerId: { type: Number }, // DistributedFairyPlayer object id
   lastLogin: { type: String },
-  codesRedeemed: { type: Array }
+  codesRedeemed: { type: Array },
+  banned: { type: Number, default: 0 },
+  terminated: { type: Number, default: 0 }
 })
 
 module.exports = Account
