@@ -8,6 +8,7 @@ const createXML = require('../utils/xml')
 const Account = require('./models/Account')
 const Fairy = require('./models/Fairy')
 const RedeemableCode = require('./models/RedeemableCode')
+const Message = require('./models/Message')
 
 const bcrypt = require('bcrypt')
 
@@ -231,8 +232,167 @@ class Database {
     return false
   }
 
+  // Strict lookup by the fairy's own distributed object id. Unlike retrieveFairy
+  // this never falls back to matching accountId, so it stays unambiguous once an
+  // account can own more than one fairy. Use it for writes.
+  async retrieveFairyById(id) {
+    const fairy = await Fairy.findById(id)
+
+    if (fairy) {
+      return fairy
+    }
+
+    return false
+  }
+
   async retrieveFairyByOwnerAccount(owner) {
     const fairy = await Fairy.findOne({ ownerAccount: owner })
+
+    if (fairy) {
+      return fairy
+    }
+
+    return false
+  }
+
+  // Every fairy an account owns. Callers that must not silently act on an
+  // arbitrary one (writes, "does a fairy already exist" checks) should use this
+  // and handle the multi-fairy case explicitly.
+  async retrieveFairiesByOwnerAccount(owner) {
+    return await Fairy.find({ ownerAccount: owner })
+  }
+
+  // Many fairies in one query, projected down to what a friends list needs.
+  //
+  // Deliberately NOT whole documents: a 300-friend login would otherwise pull
+  // 300 fairies' worth of avatar DNA, inventory and badge data across the wire.
+  // Matches on either _id or accountId, the same way retrieveFairy does, since
+  // friends lists store account ids.
+  async retrieveFairySummaries(identifiers) {
+    return await Fairy.find(
+      { $or: [{ _id: { $in: identifiers } }, { accountId: { $in: identifiers } }] },
+      { _id: 1, accountId: 1, name: 1, ownerAccount: 1 }
+    )
+  }
+
+  // A fairy projected down to exactly what FairiesProfileRequest emits.
+  async retrieveFairyProfile(identifier, { includeAvatar = false, includeBio = false } = {}) {
+    const id = Number(identifier)
+
+    if (!Number.isFinite(id)) {
+      return false
+    }
+
+    // Matched the same way retrieveFairy does -- _id or accountId -- so both
+    // branches hit an index. See db-maintenance/03-create-indexes.js.
+    const earned = {
+      $filter: {
+        input: { $ifNull: ['$badgeData.badges', []] },
+        as: 'b',
+        cond: { $eq: ['$$b.status', 'Earned'] }
+      }
+    }
+
+    const projection = {
+      _id: 1,
+      accountId: 1,
+      ownerAccount: 1,
+      address: 1,
+      moreOptions: 1,
+      created: 1,
+      name: 1,
+      talent: 1,
+      gender: 1,
+      chosen: 1,
+      icon: 1,
+      game_prof_bg: 1,
+      optionsBitmask: 1,
+      level: 1,
+      homeType: 1,
+      gardenType: 1,
+      tutorialBitmask: { $ifNull: ['$tutorialBitmask', [0, 0]] },
+
+      badge_count: { $size: earned },
+      favoriteBadgeId: { $ifNull: ['$badgeData.favoriteBadgeId', 0] },
+
+      // Newest = the Earned badge with the latest dateEarned, undated ones
+      // ignored. $gt keeps the first on a tie, which is what the array reduce
+      // this replaced did.
+      newest_badge: {
+        $let: {
+          vars: {
+            best: {
+              $reduce: {
+                input: {
+                  $filter: { input: earned, as: 'b', cond: { $ne: ['$$b.dateEarned', null] } }
+                },
+                initialValue: null,
+                in: {
+                  $cond: [
+                    {
+                      $or: [
+                        { $eq: ['$$value', null] },
+                        { $gt: ['$$this.dateEarned', '$$value.dateEarned'] }
+                      ]
+                    },
+                    '$$this',
+                    '$$value'
+                  ]
+                }
+              }
+            }
+          },
+          in: { $ifNull: ['$$best.badgeId', 0] }
+        }
+      }
+    }
+
+    if (includeBio) {
+      projection.bio = { $ifNull: ['$bio', []] }
+    }
+
+    if (includeAvatar) {
+      // proportions and rotations are a dozen numbers between them, so they go
+      // across whole. items is the expensive one and is cut to what renders.
+      projection.avatar = {
+        proportions: { $ifNull: ['$avatar.proportions', {}] },
+        rotations: { $ifNull: ['$avatar.rotations', {}] },
+        hair_back: '$avatar.hair_back',
+        hair_front: '$avatar.hair_front',
+        face: '$avatar.face',
+        eye: '$avatar.eye',
+        wing: '$avatar.wing',
+        hair_color: '$avatar.hair_color',
+        eye_color: '$avatar.eye_color',
+        skin_color: '$avatar.skin_color',
+        wing_color: '$avatar.wing_color',
+        items: {
+          $map: {
+            input: {
+              $filter: {
+                input: { $ifNull: ['$avatar.items', []] },
+                as: 'i',
+                cond: { $eq: ['$$i.location', 'Equipped'] }
+              }
+            },
+            as: 'i',
+            in: {
+              type: '$$i.type',
+              item_id: '$$i.item_id',
+              color1: '$$i.color1',
+              color2: '$$i.color2',
+              location: '$$i.location'
+            }
+          }
+        }
+      }
+    }
+
+    const [fairy] = await Fairy.aggregate([
+      { $match: { $or: [{ _id: id }, { accountId: id }] } },
+      { $limit: 1 },
+      { $project: projection }
+    ])
 
     if (fairy) {
       return fairy
@@ -451,6 +611,15 @@ class Database {
     })
 
     return await account.save()
+  }
+
+  // Post Office messages (postcards/gift sets waiting in a fairy's home).
+  async getMessagesForFairy(fairyId, type) {
+    return await Message.find({ recipient_id: fairyId, type }).sort({ created: 1 })
+  }
+
+  async deleteMessage(messageId) {
+    return await Message.deleteOne({ _id: messageId })
   }
 
   async getRedeemableCode(code) {

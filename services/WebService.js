@@ -310,15 +310,54 @@ app.post('/fairies/api/internal/setFairyData', async (req, res) => {
 
   const data = req.body
 
-  if (data.playToken && data.fieldData) {
-    const fairy = await db.retrieveFairyByOwnerAccount(data.playToken)
-    console.log(fairy, data.fieldData)
-    Object.assign(fairy, data.fieldData)
-    await fairy.save()
-    return res.status(200).send({ success: true, message: 'Success.' })
+  if (!data.fieldData) {
+    return res.status(400).send({ success: false, message: 'Missing fieldData.' })
   }
 
-  return res.status(501).send({ success: false, message: 'Something went wrong.' })
+  let fairy
+
+  if (data.fairyId !== undefined && data.fairyId !== null) {
+    // Preferred: a fairy's _id is unique, so this stays correct once an account
+    // can own more than one fairy.
+    fairy = await db.retrieveFairyById(data.fairyId)
+
+    if (!fairy) {
+      return res.status(404).send({ success: false, message: `Fairy ${data.fairyId} not found.` })
+    }
+  } else if (data.playToken) {
+    // Legacy: address by owner account, for a caller that hasn't been updated yet.
+    // Unambiguous only while an account owns a single fairy, so refuse when it
+    // isn't rather than writing the caller's fields onto an arbitrary fairy.
+    const fairies = await db.retrieveFairiesByOwnerAccount(data.playToken)
+
+    if (fairies.length === 0) {
+      return res.status(404).send({ success: false, message: `No fairy found for playToken ${data.playToken}.` })
+    }
+
+    if (fairies.length > 1) {
+      return res.status(409).send({
+        success: false,
+        message: `playToken ${data.playToken} owns ${fairies.length} fairies; address this write by fairyId.`
+      })
+    }
+
+    fairy = fairies[0]
+  } else {
+    return res.status(400).send({ success: false, message: 'Missing fairyId (or playToken).' })
+  }
+
+  // A Lua table with no entries JSON-encodes as `{}`, not `[]`, so a fairy whose
+  // last friend was just removed arrives here with friends as an empty object.
+  // Normalize it -- Mongoose casting that onto an Array path loses the write, and
+  // a lost removal reads to the player as the friend coming back on next login.
+  if (data.fieldData.friends !== undefined && !Array.isArray(data.fieldData.friends)) {
+    data.fieldData.friends = Object.values(data.fieldData.friends)
+  }
+
+  Object.assign(fairy, data.fieldData)
+  await fairy.save()
+
+  return res.status(200).send({ success: true, message: 'Success.' })
 })
 
 app.get('/fairies/api/internal/retrieveAccount', async (req, res) => {
@@ -339,6 +378,56 @@ app.get('/fairies/api/internal/retrieveAccount', async (req, res) => {
   }
 
   return res.status(404).send({ message: `Could not find account from username ${req.query.userName}` })
+})
+
+// Bulk sibling of retrieveFairy, used by the friends manager to build a player's
+// friends panel at login in ONE request instead of one per friend.
+//
+// POST rather than GET so a 300-id request can't run into a URL length limit.
+// The response is keyed by the identifier that was asked for: a fairy matches on
+// either _id or accountId, so returning a bare array would leave the caller
+// guessing which key matched. Ids with no fairy are simply absent from the map.
+app.post('/fairies/api/internal/retrieveFairies', async (req, res) => {
+  if (!verifyAuthorization(req.headers.authorization)) {
+    return res.status(401).send('Authorization failed.')
+  }
+
+  const identifiers = req.body?.identifiers
+
+  if (!Array.isArray(identifiers)) {
+    return res.status(400).send({ success: false, message: 'Missing identifiers array.' })
+  }
+
+  res.setHeader('content-type', 'application/json')
+
+  const wanted = identifiers.map(Number).filter(id => !Number.isNaN(id))
+
+  if (wanted.length === 0) {
+    return res.end(JSON.stringify({}))
+  }
+
+  const fairies = await db.retrieveFairySummaries(wanted)
+  const requested = new Set(wanted)
+  const byIdentifier = {}
+
+  for (const fairy of fairies) {
+    const summary = {
+      _id: fairy._id,
+      accountId: fairy.accountId,
+      name: fairy.name,
+      ownerAccount: fairy.ownerAccount
+    }
+
+    if (requested.has(fairy._id)) {
+      byIdentifier[fairy._id] = summary
+    }
+
+    if (requested.has(fairy.accountId)) {
+      byIdentifier[fairy.accountId] = summary
+    }
+  }
+
+  return res.end(JSON.stringify(byIdentifier))
 })
 
 app.get('/fairies/api/internal/retrieveFairy', async (req, res) => {
@@ -634,7 +723,12 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     fairyId = account.playerId
   }
 
-  const fairyData = await db.retrieveFairy(fairyId)
+  // Projected, not the whole document. This servlet is the bust-render path for
+  // the friends panel, whisper bubbles, friend alerts, the Post Office picker and
+  // the profile panels, and it only ever emits the fields below -- pulling the
+  // full fairy meant reading every badge row and the entire wardrobe to render a
+  // head-and-shoulders portrait. See Database.retrieveFairyProfile.
+  const fairyData = await db.retrieveFairyProfile(fairyId, { includeAvatar, includeBio })
   const fairiesToSend = fairyData ? [fairyData] : []
 
   const success = ses.logged ? true : false
@@ -663,14 +757,6 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
 
   responseData.fairies = []
   for (const fairy of fairiesToSend) {
-    const earnedBadges = fairy.badgeData?.badges?.filter(b => b.status === 'Earned') ?? []
-    // Newest is whichever earned badge has the latest dateEarned, i.e. the one
-    // the badges tab shows next to "recent_badge".
-    const newestBadge = earnedBadges.reduce((newest, badge) => {
-      if (!badge.dateEarned) return newest
-      if (!newest || badge.dateEarned > newest.dateEarned) return badge
-      return newest
-    }, null)
 
     const fairyEl = {
       '@fairy_id': fairy._id,
@@ -690,7 +776,6 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         created: fairy.created.toISOString().split('T')[0],
         name: fairy.name,
         talent: fairy.talent,
-        gender: fairy.gender,
         chosen: fairy.chosen,
         icon: fairy.icon,
         game_prof_bg: fairy.game_prof_bg,
@@ -700,9 +785,9 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         // to the fairy's talent until they customise them (see setHomeType).
         home_type_id: fairy.homeType ?? fairy.talent,
         garden_type_id: fairy.gardenType ?? 1,
-        badge_count: earnedBadges.length,
-        fav_badge: fairy.badgeData?.favoriteBadgeId ?? 0,
-        newest_badge: newestBadge?.badgeId ?? 0
+        badge_count: fairy.badge_count ?? 0,
+        fav_badge: fairy.favoriteBadgeId ?? 0,
+        newest_badge: fairy.newest_badge ?? 0
       }
     }
 
@@ -939,6 +1024,75 @@ app.post('/fairies/api/FairiesInventoryRequest', async (req, res) => {
       }
     }
   }))
+})
+
+// Build the <message> element the Post Office panels expect. PostOfficePostcards
+// reads `background` (postcard design id) + `phrase` (canned message id) + the
+// sender fairy; PostOfficeGiftSets reads word1..word8 as the gifted item ids and
+// resolves each to the delivered wardrobe copy when its colours are 0/0. We emit
+// all eight word slots, filling the first N with the gift item ids and zeroing
+// the rest, so the panel's word count (and its layout frame) comes out right.
+function buildMessageEl (m) {
+  const words = m.words || []
+
+  const el = {
+    '@message_id': m._id,
+    background: m.background ?? 0,
+    phrase: m.phrase ?? 0,
+    word: 0,
+    fairy: {
+      '@fairy_id': m.sender?.fairy_id ?? 0,
+      '#': {
+        name: m.sender?.name ?? '',
+        address: m.sender?.address ?? '',
+        talent: m.sender?.talent ?? 0,
+        icon: m.sender?.icon ?? 0
+      }
+    },
+    created: m.created ? m.created.toISOString() : ''
+  }
+
+  for (let i = 1; i <= 8; i++) {
+    el['word' + i] = {
+      '@color1': 0,
+      '@color2': 0,
+      '#': words[i - 1] ?? 0
+    }
+  }
+
+  return el
+}
+
+app.post('/fairies/api/FairiesMessageArchiveRequest', async (req, res) => {
+  const fairyId = req.body.fairy_id ?? req.session?.fairyId ?? null
+  const type = parseInt(req.body.type ?? 1)
+
+  if (fairyId === null) {
+    return res.send(createXML({ response: { success: false } }))
+  }
+
+  const messages = await db.getMessagesForFairy(parseInt(fairyId), type)
+
+  return res.send(createXML({
+    response: {
+      success: true,
+      messages: {
+        message: messages.map(buildMessageEl)
+      }
+    }
+  }))
+})
+
+app.post('/fairies/api/FairiesDeleteMessageRequest', async (req, res) => {
+  const messageId = req.body.message_id ?? null
+
+  if (messageId === null) {
+    return res.send(createXML({ response: { success: false } }))
+  }
+
+  await db.deleteMessage(parseInt(messageId))
+
+  return res.send(createXML({ response: { success: true } }))
 })
 
 app.post('/fairies/api/CouponRedemptionRequest', async (req, res) => {

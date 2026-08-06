@@ -4,8 +4,8 @@ mongoose = global.mongoose
 
 const Fairy = new mongoose.model('Fairy', {
   _id: { type: Number },
-  ownerAccount: { type: String },
-  accountId: { type: Number }, // Account object id
+  ownerAccount: { type: String, index: true },
+  accountId: { type: Number, index: true },
   friends: { type: Array }, // Friends list (of Account object ids)
   created: { type: Date, default: Date.now },
   name: String,
@@ -24,6 +24,8 @@ const Fairy = new mongoose.model('Fairy', {
   goldTradedToday: { type: Number, default: 0 },
   lastGoldTradeAt: { type: Date, default: null }, 
   pouch: { type: Array },
+  // giveaway_ids this fairy has already collected from a meadow
+  giveawaysCollected: { type: Array, default: [] },
   maxOutfitSlots: { type: Number, default: 1 }, // saved-outfit slots; owned by the game-server AI
   savedOutfits: { type: Array, default: [] }, // written only by the game-server AI (DistributedFairyPlayerAI)
   level: { type: Number, default: 0 },
