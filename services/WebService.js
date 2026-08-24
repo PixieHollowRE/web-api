@@ -230,6 +230,19 @@ app.post('/dxd/flashAPI/checkUsernameAvailability', async (req, res) => {
 })
 
 app.post('/dxd/flashAPI/createAccount', async (req, res) => {
+  // Registration is disabled for now.
+  res.setHeader('content-type', 'text/xml')
+  res.send(createXML({
+    response: {
+      success: false,
+      results: {
+        userId: -1
+      }
+    }
+  }))
+
+  return
+
   const username = req.body.username.toLowerCase()
   const status = await db.createAccount(username, req.body.password)
   const accountId = status ? await db.getAccountIdFromUser(username) : -1
