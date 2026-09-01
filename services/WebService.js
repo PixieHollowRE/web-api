@@ -148,7 +148,7 @@ async function handleWhoAmIRequest (req, res) {
           isChild: true,
           access: 'basic',
           touAccepted: true,
-          speed_chat_prompt: speedChatPrompt,
+          speed_chat_prompt: 'true', // speedChatPrompt
           dname_submitted: true,
           dname_approved: true
         }
