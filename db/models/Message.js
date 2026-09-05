@@ -2,14 +2,9 @@
 
 mongoose = global.mongoose
 
-// A Post Office message: a postcard (type 4) or gift set (type 5) waiting in a
-// fairy's home Post Office. Written by the game-server shopkeeper AI
-// (DistributedFairyShopkeeperNPCAI._writePostOfficeMessage) into the shared
-// `messages` collection, read back here by FairiesMessageArchiveRequest and
-// removed by FairiesDeleteMessageRequest. `_id` is a distributed-object id from
-// the shared doid sequence, so it stays a Number rather than an ObjectId.
+// Written by DistributedFairyShopkeeperNPCAI._writePostOfficeMessage.
 const Message = new mongoose.model('Message', {
-  _id: { type: Number },
+  _id: { type: Number }, // a doid, not an ObjectId -- shared with the cluster
   recipient_id: { type: Number }, // Fairy _id the message is waiting for
   type: { type: Number }, // 4 = postcard, 5 = gift set
   sender: {
@@ -19,9 +14,10 @@ const Message = new mongoose.model('Message', {
     talent: { type: Number, default: 0 },
     icon: { type: Number, default: 0 }
   },
-  background: { type: Number, default: 0 }, // postcard design id (88501-88521); 0 for gift sets
+  background: { type: Number, default: 0 }, // postcard design id, else 0
   phrase: { type: Number, default: 0 }, // canned message id the sender picked
-  words: { type: Array, default: [] }, // gift-set item ids (empty for postcards)
+  words: { type: Array, default: [] }, // gift-set item ids; [] for postcards
+  word_colors: { type: Array, default: [] }, // [c1, c2] per word; [] pre-fix
   created: { type: Date, default: Date.now }
 })
 
