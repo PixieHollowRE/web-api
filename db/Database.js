@@ -14,6 +14,8 @@ const bcrypt = require('bcrypt')
 
 const axios = require('axios').default
 
+const { normalizeFairyName } = require('../utils/name')
+
 const saltRounds = 12
 
 const userAgent = 'Sunrise Games - Pixie Hollow API'
@@ -232,9 +234,7 @@ class Database {
     return false
   }
 
-  // Strict lookup by the fairy's own distributed object id. Unlike retrieveFairy
-  // this never falls back to matching accountId, so it stays unambiguous once an
-  // account can own more than one fairy. Use it for writes.
+  // No accountId fallback, so it stays unambiguous. Use it for writes.
   async retrieveFairyById(id) {
     const fairy = await Fairy.findById(id)
 
@@ -255,19 +255,12 @@ class Database {
     return false
   }
 
-  // Every fairy an account owns. Callers that must not silently act on an
-  // arbitrary one (writes, "does a fairy already exist" checks) should use this
-  // and handle the multi-fairy case explicitly.
+  // For callers that must not silently act on an arbitrary fairy.
   async retrieveFairiesByOwnerAccount(owner) {
     return await Fairy.find({ ownerAccount: owner })
   }
 
-  // Many fairies in one query, projected down to what a friends list needs.
-  //
-  // Deliberately NOT whole documents: a 300-friend login would otherwise pull
-  // 300 fairies' worth of avatar DNA, inventory and badge data across the wire.
-  // Matches on either _id or accountId, the same way retrieveFairy does, since
-  // friends lists store account ids.
+  // Projected on purpose: a 300-friend login would pull 300 whole fairies.
   async retrieveFairySummaries(identifiers) {
     return await Fairy.find(
       { $or: [{ _id: { $in: identifiers } }, { accountId: { $in: identifiers } }] },
@@ -283,8 +276,7 @@ class Database {
       return false
     }
 
-    // Matched the same way retrieveFairy does -- _id or accountId -- so both
-    // branches hit an index. See db-maintenance/03-create-indexes.js.
+    // Matched on _id or accountId, so both branches hit an index.
     const earned = {
       $filter: {
         input: { $ifNull: ['$badgeData.badges', []] },
@@ -315,9 +307,7 @@ class Database {
       badge_count: { $size: earned },
       favoriteBadgeId: { $ifNull: ['$badgeData.favoriteBadgeId', 0] },
 
-      // Newest = the Earned badge with the latest dateEarned, undated ones
-      // ignored. $gt keeps the first on a tie, which is what the array reduce
-      // this replaced did.
+      // $gt keeps the first on a tie, the way the array reduce it replaced did.
       newest_badge: {
         $let: {
           vars: {
@@ -352,8 +342,7 @@ class Database {
     }
 
     if (includeAvatar) {
-      // proportions and rotations are a dozen numbers between them, so they go
-      // across whole. items is the expensive one and is cut to what renders.
+      // items is the expensive part, so it is cut down to what renders.
       projection.avatar = {
         proportions: { $ifNull: ['$avatar.proportions', {}] },
         rotations: { $ifNull: ['$avatar.rotations', {}] },
@@ -467,7 +456,7 @@ class Database {
     let account = await this.retrieveAccountFromUser(username)
 
     if (!account) {
-      // Check if its in the Sunrise Games database.
+      // Check if it's in the Sunrise Games database.
       const res = await this.checkLogin(username, password)
       const errorCode = res.data.errorCode
 
@@ -482,13 +471,12 @@ class Database {
     const match = bcrypt.compareSync(password, account.password)
 
     if (!match) {
-      // Check if its in the Sunrise Games database.
+      // Check if it's in the Sunrise Games database.
       const res = await this.checkLogin(username, password)
       const errorCode = res.data.errorCode
 
       if (errorCode === 0) {
-        // Our main Sunrise Games password changed, the one in the database is outdated.
-        // Generate new hash for bcrypt
+        // The Sunrise Games password changed; rehash ours to match.
         account.password = bcrypt.hashSync(password, saltRounds)
         await account.save()
       } else {
@@ -568,7 +556,7 @@ class Database {
       _id: await this.getNextDoId(),
       ownerAccount: await this.getUserNameFromAccountId(accountId),
       accountId,
-      name: fairyData.name[0],
+      name: normalizeFairyName(fairyData.name[0]),
       talent: parseInt(fairyData.talent[0]),
       gender: parseInt(fairyData.gender[0]),
       bio: bio(),

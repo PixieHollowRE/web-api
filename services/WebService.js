@@ -13,6 +13,8 @@ const CryptoJS = require('crypto-js')
 const fs = require('fs')
 const { XMLParser } = require('fast-xml-parser')
 
+const { normalizeFairyName } = require('../utils/name')
+
 const loginQueue = []
 
 app.get('/', (req, res) => {
@@ -42,7 +44,7 @@ function parseFairyNames () {
 const fairyNames = parseFairyNames()
 
 function validateFairyName (name) {
-  const nameParts = name.trim().split(/\s+/)
+  const nameParts = normalizeFairyName(name).split(' ')
   if (nameParts.length > 2) return false
 
   const [firstName, lastName] = nameParts
@@ -197,7 +199,7 @@ app.post('/dxd/flashAPI/checkUsernameAvailability', async (req, res) => {
   if (process.env.LOCALHOST_INSTANCE === 'true') {
     status = await db.isUsernameAvailable(username)
   } else {
-    // TODO: Integrate registration into Sunrise database and re-enable in-game registrations for production
+    // TODO: register against the Sunrise database and re-enable in-game signup
     status = false
   }
 
@@ -247,8 +249,7 @@ app.post('/dxd/flashAPI/createAccount', async (req, res) => {
   const status = await db.createAccount(username, req.body.password)
   const accountId = status ? await db.getAccountIdFromUser(username) : -1
 
-  // Start our session if we do not already have one.
-  // TODO: Should we redirect instead if they are already signed in?
+  // TODO: redirect instead when they are already signed in?
   if (!req.session.logged) {
     await db.createSession(req, username, accountId, true)
   }
@@ -330,17 +331,14 @@ app.post('/fairies/api/internal/setFairyData', async (req, res) => {
   let fairy
 
   if (data.fairyId !== undefined && data.fairyId !== null) {
-    // Preferred: a fairy's _id is unique, so this stays correct once an account
-    // can own more than one fairy.
+    // Preferred: _id stays unique once an account can own several fairies.
     fairy = await db.retrieveFairyById(data.fairyId)
 
     if (!fairy) {
       return res.status(404).send({ success: false, message: `Fairy ${data.fairyId} not found.` })
     }
   } else if (data.playToken) {
-    // Legacy: address by owner account, for a caller that hasn't been updated yet.
-    // Unambiguous only while an account owns a single fairy, so refuse when it
-    // isn't rather than writing the caller's fields onto an arbitrary fairy.
+    // Legacy: only unambiguous while an account owns exactly one fairy.
     const fairies = await db.retrieveFairiesByOwnerAccount(data.playToken)
 
     if (fairies.length === 0) {
@@ -359,10 +357,7 @@ app.post('/fairies/api/internal/setFairyData', async (req, res) => {
     return res.status(400).send({ success: false, message: 'Missing fairyId (or playToken).' })
   }
 
-  // A Lua table with no entries JSON-encodes as `{}`, not `[]`, so a fairy whose
-  // last friend was just removed arrives here with friends as an empty object.
-  // Normalize it -- Mongoose casting that onto an Array path loses the write, and
-  // a lost removal reads to the player as the friend coming back on next login.
+  // An empty Lua table arrives as `{}`; Mongoose would drop the write.
   if (data.fieldData.friends !== undefined && !Array.isArray(data.fieldData.friends)) {
     data.fieldData.friends = Object.values(data.fieldData.friends)
   }
@@ -393,13 +388,7 @@ app.get('/fairies/api/internal/retrieveAccount', async (req, res) => {
   return res.status(404).send({ message: `Could not find account from username ${req.query.userName}` })
 })
 
-// Bulk sibling of retrieveFairy, used by the friends manager to build a player's
-// friends panel at login in ONE request instead of one per friend.
-//
-// POST rather than GET so a 300-id request can't run into a URL length limit.
-// The response is keyed by the identifier that was asked for: a fairy matches on
-// either _id or accountId, so returning a bare array would leave the caller
-// guessing which key matched. Ids with no fairy are simply absent from the map.
+// Bulk retrieveFairy: one request per friends panel; POST for URL length.
 app.post('/fairies/api/internal/retrieveFairies', async (req, res) => {
   if (!verifyAuthorization(req.headers.authorization)) {
     return res.status(401).send('Authorization failed.')
@@ -476,8 +465,6 @@ app.get('/fairies/api/internal/retrieveObject/:identifier', async (req, res) => 
     // Check for account
     let account = await db.retrieveAccountFromIdentifier(req.params.identifier)
     if (account) {
-      // Convert Mongoose docs to JS objects so we can make
-      // changes to it.
       account = account.toObject()
       // Don't send the account's hashed password
       delete account.password
@@ -508,12 +495,13 @@ app.get('/fairies/api/internal/retrieveObject/:identifier', async (req, res) => 
   }
 })
 
-// The Flash-facing routes read bio as { id, answer } records, but the cluster
-// can hand it back to us in other shapes: setBio is a `db` field, so any update
-// that goes through the state server write-throughs to APIDatabase.lua, whose
-// Lua unpacker reads BioAnswer struct members positionally (see how it takes
-// setFairyDNA apart as value[1], value[2]...). Pin the shape here so a
-// round-trip can't quietly rewrite bio into something the profile can't read.
+/**
+ * Pin bio to the { id, answer } records the Flash-facing routes read.
+ *
+ * setBio is a `db` field, so an update through the state server write-throughs
+ * to APIDatabase.lua, whose Lua unpacker reads BioAnswer members positionally.
+ * Without this a round-trip can rewrite bio into a shape the profile can't read.
+ */
 function normaliseBio (value) {
   if (!Array.isArray(value)) {
     return value
@@ -586,6 +574,8 @@ app.post('/fairies/api/internal/updateObject/:identifier', async (req, res) => {
         for (const [key, value] of Object.entries(data)) {
           if (fairyDNAFieldMap[key]) {
             fairy.set(fairyDNAFieldMap[key], value)
+          } else if (key === 'name') {
+            fairy.name = normalizeFairyName(value)
           } else if (key === 'bio') {
             fairy.bio = normaliseBio(value)
           } else {
@@ -710,11 +700,7 @@ app.post('/fairies/api/SubmitDNameRequest', (req, res) => {
 })
 
 app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
-  // NOTE: Sunrise only supports one Fairy or Sparrow Man character per account.
-  // Sunrise is aiming for accuracy as close as possible, even if the client may allow it still.
-
-  // Prior to November 10, 2011, you could create up to three fairies or sparrow men.
-  // After that date, you could only create one fairy per Disney account.
+  // One character per account, matching Disney's rules from Nov 10, 2011 on.
   const ses = req.session
 
   const loggedInFairy = false
@@ -736,11 +722,7 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     fairyId = account.playerId
   }
 
-  // Projected, not the whole document. This servlet is the bust-render path for
-  // the friends panel, whisper bubbles, friend alerts, the Post Office picker and
-  // the profile panels, and it only ever emits the fields below -- pulling the
-  // full fairy meant reading every badge row and the entire wardrobe to render a
-  // head-and-shoulders portrait. See Database.retrieveFairyProfile.
+  // Projected: a bust render needs none of the badge rows or the wardrobe.
   const fairyData = await db.retrieveFairyProfile(fairyId, { includeAvatar, includeBio })
   const fairiesToSend = fairyData ? [fairyData] : []
 
@@ -758,12 +740,7 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     }))
   }
 
-  // The account name above the fairy name comes off the DistributedFairyPlayer's
-  // DISLname/DISLid when the fairy is in our meadow, but LimitedProfile.setFairyXML
-  // reads it from response.user_name / fairy.user_id for anyone we can't see.
-  // FairyClient.lua sets DISLname from the play token (the account username) and
-  // DISLid from the account _id, so mirror those two here or the header renders blank
-  // and the friend/ignore/report buttons act on player id 0.
+  // LimitedProfile reads the account name from here for fairies we can't see.
   if (fairyData) {
     responseData.user_name = fairyData.ownerAccount || await db.getUserNameFromAccountId(fairyData.accountId)
   }
@@ -777,12 +754,7 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         user_id: fairy.accountId,
         address: fairy.address,
         more_options: fairy.moreOptions,
-        // Home privacy is stored in the moreOptions bit-string at offset 15
-        // (client FairiesConstants.MORE_OPTIONS_HOME_PRIVACY_OFFSET): 0 = public,
-        // 1 = friends-only. The client reads home_privacy_state off the profile
-        // (HomeValidator / Profile) to decide whether a non-friend may enter this
-        // fairy's home, so surface it explicitly rather than making the client
-        // re-derive it from the raw string.
+        // moreOptions offset 15: 0 = public, 1 = friends-only.
         home_privacy_state: Number((fairy.moreOptions || '').charAt(15)) || 0,
         tutorial: fairy.tutorialBitmask[0],
         tutorial_hi: fairy.tutorialBitmask[1],
@@ -794,8 +766,7 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
         game_prof_bg: fairy.game_prof_bg,
         options_mask: fairy.optionsBitmask,
         level: fairy.level,
-        // Needed so visitors can render this fairy's home/garden. Both default
-        // to the fairy's talent until they customise them (see setHomeType).
+        // Both default to the fairy's talent until customized.
         home_type_id: fairy.homeType ?? fairy.talent,
         garden_type_id: fairy.gardenType ?? 1,
         badge_count: fairy.badge_count ?? 0,
@@ -823,11 +794,7 @@ app.post('/fairies/api/FairiesProfileRequest', async (req, res) => {
     if (includeAvatar && fairy.avatar) {
       const avatarEl = {}
 
-      // Each proportion/rotation is its own repeated element: the client walks
-      // them with `for each(rot in data.rotation)` (see AvatarDNA.fromXML), and
-      // it's the same shape the client sends us at fairy creation. Collecting
-      // them into an array is what makes xmlbuilder2 repeat the tag — assigning
-      // in the loop would emit only the last one.
+      // An array is what makes xmlbuilder2 repeat the tag for AvatarDNA.
       if (fairy.avatar.proportions) {
         const proportions = []
 
@@ -975,10 +942,7 @@ app.post('/fairies/api/ChooseFairyRequest', (req, res) => {
   }))
 })
 
-// type "games" -> minigame high scores, type "stats" -> crafting recipe stats.
-// Both are populated by the game-server AI directly (MongoInterface.recordStat)
-// and read back here in the shape FullProfile/FairyInventoryMgr expect:
-// response.inventory.stat[] with child elements stat_id/count/best/total/bonus.
+// Written by the game-server's MongoInterface.recordStat.
 const INVENTORY_STAT_TYPES = {
   games: 'game',
   stats: 'recipe'
@@ -1039,14 +1003,10 @@ app.post('/fairies/api/FairiesInventoryRequest', async (req, res) => {
   }))
 })
 
-// Build the <message> element the Post Office panels expect. PostOfficePostcards
-// reads `background` (postcard design id) + `phrase` (canned message id) + the
-// sender fairy; PostOfficeGiftSets reads word1..word8 as the gifted item ids and
-// resolves each to the delivered wardrobe copy when its colours are 0/0. We emit
-// all eight word slots, filling the first N with the gift item ids and zeroing
-// the rest, so the panel's word count (and its layout frame) comes out right.
+// Build the <message> element the Post Office panels expect.
 function buildMessageEl (m) {
   const words = m.words || []
+  const wordColors = m.word_colors || []
 
   const el = {
     '@message_id': m._id,
@@ -1065,10 +1025,13 @@ function buildMessageEl (m) {
     created: m.created ? m.created.toISOString() : ''
   }
 
+  // All eight slots ship; the panel counts non-zero words to pick a frame.
   for (let i = 1; i <= 8; i++) {
+    const color = wordColors[i - 1] || []
+
     el['word' + i] = {
-      '@color1': 0,
-      '@color2': 0,
+      '@color1': color[0] ?? 0,
+      '@color2': color[1] ?? 0,
       '#': words[i - 1] ?? 0
     }
   }
@@ -1178,12 +1141,7 @@ app.post('/fairies/api/FairiesEditBioRequest', async (req, res) => {
 
     await fairy.save()
 
-    // Saving isn't enough on its own. setBio is `required db` (see fairy.dc),
-    // so the state server read it once when this fairy generated and has been
-    // serving that copy ever since. The profile panel reads bio off the live
-    // distributed object for any fairy present in the district (see
-    // LimitedProfile.onProfileLoaded), so without this the fairy's own profile
-    // and every visitor's view of it stay stale until the next relog.
+    // setBio is `required db`, so the state server's copy is stale until told.
     md.sendFairyBio(fairy._id, fairy.bio)
 
     res.send(createXML({
@@ -1235,9 +1193,7 @@ app.post('/fairies/api/UpdateFavoriteBadgeRequest', async (req, res) => {
 
     const fairy = await db.retrieveFairy(ses.fairyId)
 
-    // The badges panel only shows the "make favorite" button on a badge
-    // FairiesBadgeManager has already told the client is Earned, but a client
-    // is not trusted to enforce that -- checked again here.
+    // The panel already hides this for unearned badges; don't trust the client.
     const isEarned = fairy.badgeData?.badges?.some(
       badge => badge.badgeId === badgeId && badge.status === 'Earned'
     )
